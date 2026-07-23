@@ -7,6 +7,7 @@ import { cn } from '@/utils/cn';
 import { formatDate } from '@/utils/formatters';
 import type { ClientGroup, GroupStatus } from '@/hooks/useClientGroups';
 import type { ClienteCarteira } from '@/services/carteira';
+import GroupClientVisualAnalytics from './GroupClientVisualAnalytics';
 
 function fmtK(v: number): string {
   if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1).replace('.', ',')}M`;
@@ -140,6 +141,9 @@ export default function GroupDashboard({ g, today, onOpenCliente, onBack, childr
         <Ranking titulo="Top clientes por valor" icon={Crown} itens={topValor} />
         <Ranking titulo="Dormentes de alto valor" icon={Moon} itens={dormentesValor} />
       </div>
+
+      {/* Análise visual — primeiro enxergar, depois detalhar */}
+      <GroupClientVisualAnalytics clientes={g.clientes} receitaGrupo={g.receita} today={today} onOpenCliente={onOpenCliente} />
 
       {/* Lista de clientes (injetada) */}
       {children}
