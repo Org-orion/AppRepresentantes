@@ -607,6 +607,36 @@ mudar a regra vai ver o teste falhar e precisar decidir conscientemente.
 `includes` por igualdade ou por regex ancorada pode deixar de reconhecer documento legítimo — o que é
 pior. Levantamento simples: `select distinct tipo from erp.concrem_relatorio_entrega_anexos`.
 
+### A9 — O banco do Portal **não tem backup nenhum**
+
+**Evidência (2026-08-19):** painel do Portal → Database → Backups:
+*"Free Plan does not include project backups. Upgrade to the Pro Plan for up to 7 days of scheduled
+backups."*
+
+Não é retenção curta. É **zero**. Nem backup diário, nem PITR.
+
+**O que está sem rede:** tudo que é nativo do Portal — usuários e seus vínculos, representantes,
+orçamentos e itens, grupos de cliente, notificações, e (quando existir) as marcações de conferido.
+Perda ou corrupção nesse banco é **irrecuperável**.
+
+Os dados do ERP **não** correm esse risco: vivem no outro projeto, que é PRO. Mas o Portal não é só uma
+casca de leitura — os orçamentos, que são o trabalho dos representantes, nascem e morrem aqui.
+
+**Corrige o pressuposto do plano de migration:** a seção "Backup e recuperação" dizia "confirmar o backup
+mais recente". Não existe backup a confirmar. Qualquer aplicação em produção passa a exigir **dump manual
+antes**.
+
+**Ações:**
+
+1. **Imediata, hoje:** dump manual com `pg_dump`/`supabase db dump` — ver `docs/BACKUP-MANUAL.md`. As
+   ferramentas já estão instaladas na máquina.
+2. **Estrutural:** plano pago. Não pelo branching — por um sistema de uso diário estar sem recuperação
+   possível. Isto tem precedência sobre boa parte do que resta no plano.
+3. Enquanto o plano for free, o dump manual vira **rotina**, não evento.
+
+**Severidade:** alta. Um erro de operação, uma exclusão acidental ou uma migration mal escrita hoje não
+tem volta.
+
 ## Verificação visual pendente — Etapa 3.5
 
 Roteiro reproduzível, ~2 minutos, sem tocar em nada:

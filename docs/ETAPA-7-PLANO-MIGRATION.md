@@ -189,10 +189,17 @@ O que pode demorar é a **primeira execução** dos agregados, não a migration 
 
 ## Backup e recuperação
 
-- Confirmar o backup mais recente do Portal **antes** de aplicar (`ikjeyaxfciferyezxskh`).
-- O Portal está em plano **FREE**: sem PITR e com retenção limitada. Isso é risco de continuidade
-  registrado no plano-mãe, e vale a pena resolver antes de mexer no schema.
-- Como não há operação destrutiva, o backup é rede de segurança, não requisito de execução.
+**CORRIGIDO em 2026-08-19 — o pressuposto original desta seção estava errado.**
+
+Não existe backup a confirmar: o painel informa *"Free Plan does not include project backups"*. O banco
+do Portal está **sem backup diário e sem PITR** (achado **A9**).
+
+Consequência para este plano:
+
+- **Dump manual é pré-requisito de execução**, não conforto. Procedimento em `docs/BACKUP-MANUAL.md`.
+- Nenhuma das migrations é destrutiva, o que mantém o risco baixo — mas "baixo" com zero rede é
+  diferente de "baixo" com restauração possível.
+- A restauração **nunca foi testada**. Estado honesto: existe cópia, não existe recuperação comprovada.
 
 ## Ordem de aplicação
 
@@ -264,9 +271,21 @@ está em plano **FREE** — sem *branching* do Supabase. Opções:
 
 | Opção | Custo | Observação |
 |---|---|---|
-| Supabase CLI local (`supabase start`) | grátis | não reproduz o FDW para o ERP; valida schema e RLS, não os agregados |
+| Supabase CLI local (`supabase start`) | grátis | **ESCOLHIDA** — mas exige **Docker Desktop**, que não está instalado nesta máquina. Não reproduz o FDW: valida schema e RLS, não os agregados |
 | Projeto Supabase free separado | grátis | precisa recriar FDW e dados de amostra |
-| Upgrade do Portal para plano pago | pago | destrava branching, PITR e retenção — resolve também o risco de continuidade |
+| Upgrade do Portal para plano pago | pago | destrava branching, PITR e backup — e, depois do A9, deixou de ser conveniência |
+
+**Estado do ambiente local (verificado em 2026-08-19):** `supabase` CLI 2.114.0 ✅ · `pg_dump` e `psql`
+18.6 ✅ · **Docker ❌ não instalado** · nenhum PostgreSQL local rodando.
+
+`supabase start` depende de Docker. Sem ele, a opção A não sai do papel.
+
+**Limitação adicional, independente do Docker:** as cinco migrations históricas **não** rodam num banco
+limpo — `20260630000200` e `20260630000300` são geradores de `INSERT` executados à mão, e
+`20260630000400` (FDW) e `20260706000100` (views sobre `erp.*`) dependem do banco do ERP. Um
+`supabase db reset` falharia. O ensaio local viável é: subir o stack, aplicar **`20260630000100`** e
+depois as duas migrations novas — o suficiente para exercitar `telefone`, a tabela de conferidos e a RLS
+com dois usuários.
 
 **Sem definir isto, a parte 7.4 não deve ir para produção.** As partes 7.2 e 7.3 são pequenas e
 aditivas o bastante para irem direto, com backup confirmado — mas isso é **decisão sua**, não minha.

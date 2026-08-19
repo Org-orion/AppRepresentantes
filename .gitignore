@@ -37,3 +37,8 @@ pnpm-debug.log*
 *.sw?
 .DS_Store
 Thumbs.db
+
+# Dumps de banco — contêm dados pessoais. NUNCA versionar.
+backup-*.sql
+*.dump
+dump-*.sql
