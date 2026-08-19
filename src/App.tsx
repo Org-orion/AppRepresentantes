@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { perfilDoUsuario, isGlobal } from '@/constants/perfis';
+import { AdminRoute, OperadorRoute, RepRoute, OrcEditorRoute } from '@/routes/guards';
 import LoginPage from '@/pages/LoginPage';
 import DashboardPage from '@/pages/DashboardPage';
 import OrcamentosPage from '@/pages/OrcamentosPage';
@@ -27,39 +27,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-
-// ─── Guard: GESTÃO (Representantes/Usuários/Grupos) — SOMENTE administrador ─
-// Diretor Geral vê todos os dados do sistema, mas não acessa a gestão.
-function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-  if (perfilDoUsuario(user?.usuario) !== 'admin') return <Navigate to="/dashboard" replace />;
-  return <>{children}</>;
-}
-
-// ─── Guard: aprovações (operador, admin, diretor geral) ───
-// Diretor é somente-leitura: não aprova/rejeita (ação de gestão) → sem acesso.
-function OperadorRoute({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-  const p = perfilDoUsuario(user?.usuario);
-  const ok = isGlobal(p) || p === 'operador';
-  if (!ok) return <Navigate to="/dashboard" replace />;
-  return <>{children}</>;
-}
-
-// ─── Guard: telas operacionais (bloqueia apenas operador puro) ─
-function RepRoute({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-  if (perfilDoUsuario(user?.usuario) === 'operador') return <Navigate to="/aprovacoes" replace />;
-  return <>{children}</>;
-}
-
-// ─── Guard: criar/editar orçamento (diretor é somente-leitura) ─
-function OrcEditorRoute({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-  const p = perfilDoUsuario(user?.usuario);
-  if (p === 'operador' || p === 'diretor') return <Navigate to="/orcamentos" replace />;
-  return <>{children}</>;
-}
 
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth();

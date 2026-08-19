@@ -589,6 +589,24 @@ redirecionamento).
 `<url-do-preview>/dashboard` e apertar F5. Se carregar, a correção está provada **na plataforma**, que é
 justamente o que faltou em `b271f33`. Só então promover para produção.
 
+### A8 — `classifyAnexo` classifica por substring solta
+
+Descoberto ao escrever os testes da Etapa 6. A regra é `tipo.toLowerCase().includes('nf')`, então
+**qualquer** texto que contenha essas duas letras vira "nota fiscal" — `conferência`, `informe`,
+`confirmação`. Um falso positivo aqui faz um pedido faturado **parecer documentado** e sumir da lista
+de pendências: some da tela justamente quem precisava de atenção.
+
+`DANFE` também cai como NF, e isso está **correto** (é documento de nota fiscal) — o problema não é a
+intenção, é a largura da regra.
+
+**Registrado com TESTE DE CARACTERIZAÇÃO** em `src/utils/pipeline.test.ts`: o comportamento atual está
+travado por teste, com comentário explicando que ele documenta o que É, não o que deveria ser. Quem
+mudar a regra vai ver o teste falhar e precisar decidir conscientemente.
+
+**Para decidir antes de corrigir:** quais valores de `tipo` o ERP realmente usa? Sem essa lista, trocar
+`includes` por igualdade ou por regex ancorada pode deixar de reconhecer documento legítimo — o que é
+pior. Levantamento simples: `select distinct tipo from erp.concrem_relatorio_entrega_anexos`.
+
 ## Verificação visual pendente — Etapa 3.5
 
 Roteiro reproduzível, ~2 minutos, sem tocar em nada:
@@ -619,7 +637,7 @@ que renderiza cada tela em estado de erro.
 | 3.5 | Estados de erro (AC1) | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `abf4435`; typecheck, lint e build verdes | ressalva: verificação visual pendente — roteiro abaixo |
 | 4 | Sessão | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `96a7d12`; typecheck, lint e build verdes; inspeção descarta quebra de fluxo por nova aba | ressalva: matriz de 10 cenários em `docs/ETAPA-4-VERIFICACAO-SESSAO.md` aguarda execução manual; cenário de expiração de token NÃO VERIFICADO |
 | 5 | Anti-força-bruta | **PARCIAL** | 2026-08-19 | commit da etapa; typecheck, lint e build verdes | código pronto (envia `captchaToken`, Edge Function não é mais chamada). **Falta a parte de painel** — roteiro em `docs/ETAPA-5-CAPTCHA-NATIVO.md`, com ordem obrigatória |
-| 6 | Testes | PENDENTE | — | — | — |
+| 6 | Testes | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | 56 testes em 6 arquivos, 1,1s; mutação proposital (`diretor` virando global) derrubou 6 testes em 3 arquivos e a restauração devolveu 56 verdes | ressalva: falta o teste de integração de RLS (6.3), que prova o isolamento **no banco** — vai junto da Etapa 7 |
 | 7 | Migrations | PENDENTE | — | — | aguarda D3 + autorização de banco |
 | 8 | Conferido no banco | PENDENTE | — | — | D4 aprovada; depende da Etapa 7 |
 | 9 | Código morto | PENDENTE | — | — | — |
