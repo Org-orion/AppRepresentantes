@@ -1,7 +1,7 @@
 # Etapa 1 — Rotação de segredos e revogação do `anon` no banco antigo
 
 > **Executor: humano (Kaio).** Ação em produção — o Claude Code não executa nada aqui.
-> Origem da pendência: `migration/RESUMO.md` §7 (aberta desde 2026-06-30).
+> Origem da pendência: `docs/MIGRACAO-2026-06-RESUMO.md` §7 (aberta desde 2026-06-30).
 > Plano-mãe: `docs/PLANO-SANEAMENTO.md` · Classificação: **T4 — crítica/externa**.
 
 ---
@@ -35,7 +35,7 @@ maior autoridade na hierarquia do cérebro — vem antes de qualquer melhoria de
 ## ⚠️ O risco que define a ordem dos passos (R1)
 
 A senha do `postgres` do **banco do ERP** não vive só no ERP: ela está gravada no **user mapping do FDW
-dentro do banco do Portal** (server `erp_test`, criado em `migration/03_erp_fdw.sql`).
+dentro do banco do Portal** (server `erp_test`, criado em `supabase/migrations/20260630000400_erp_fdw.sql`).
 
 **Trocar a senha no ERP sem atualizar o user mapping derruba, na mesma hora:**
 Pedidos · Acompanhamento · Central Financeira (NF/boleto) · Carteira de Clientes · Dashboards de diretor ·

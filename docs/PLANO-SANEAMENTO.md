@@ -114,7 +114,7 @@ e não serão descartados.
 
 ## Etapa 1 — Segredos e banco antigo · T4 · execução sua, roteiro meu
 
-Segurança vem primeiro na hierarquia de autoridade — e é a pendência mais antiga (§7 do `migration/RESUMO.md`).
+Segurança vem primeiro na hierarquia de autoridade — e é a pendência mais antiga (§7 do `docs/MIGRACAO-2026-06-RESUMO.md`).
 
 **1.1 Rotação das senhas expostas durante a migração**
 Eu entrego o roteiro; **você executa** no painel (é ação em produção).
@@ -152,7 +152,7 @@ ensina o modelo errado para qualquer pessoa **ou agente** que abra o projeto.
 - Alinho a estrutura ao **Template — CLAUDE md**.
 
 **Verificação:** leitura cruzada afirmação-a-afirmação contra `AuthContext.tsx`, `client.ts`, `App.tsx`,
-`perfis.ts`, `migration/*.sql` — cada linha do arquivo apontando para código real.
+`perfis.ts`, `supabase/migrations/*.sql` — cada linha do arquivo apontando para código real.
 **Reversão:** `git revert` do commit (arquivo isolado).
 **Fora do escopo aqui:** os outros `.md` da raiz (Etapa 12).
 
@@ -256,7 +256,7 @@ de "conferido" da Etapa 8.
 
 ## Etapa 7 — Consolidar migrations + `telefone` + tabela de "conferido" · T3/T4 · ~3 h
 
-**Estado atual:** SQL espalhado em `migration/` (4 arquivos), `src/lib/supabase/migration-diretores-grupos.sql`
+**Estado atual:** SQL espalhado em `supabase/migrations/` (4 arquivos), `supabase/migrations/20260706000100_diretores_e_grupos.sql`
 e o legado `src/lib/supabase/schema.sql`; sem numeração única nem registro de aplicação. A coluna `telefone`
 não tem migration nenhuma — vive como comentário no topo de `PerfilPage.tsx`.
 
@@ -631,7 +631,7 @@ que renderiza cada tela em estado de erro.
 |---|---|---|---|---|---|
 | 0 | Baseline + branch | **CONCLUÍDO** | 2026-08-19 | branch `chore/saneamento` criada de `fa53856`; commit `452b2f3`; working tree com os 3 arquivos preservados | baseline da tabela acima; nada de código alterado |
 | 1 | Segredos e banco antigo | **PARCIAL** | 2026-08-19 | senhas do ERP e do Portal rotacionadas; user mapping atualizado; `count(*)` = 31.906; app com 7.595 pedidos | 1.1 concluída (incidente A1 resolvido). **Falta 1.2** (revogar `anon`) — travada até saber quem pediu a migration `grant_anon_access_co…` no ERP |
-| 2 | `CLAUDE.md` | **CONCLUÍDO** | 2026-08-19 | commit `45c0397`; `tsc --noEmit` verde; cada afirmação conferida contra `App.tsx`, `client.ts`, `perfis.ts`, `scope.ts`, `acompanhamento.ts`, `pedidosVenda.ts` e `migration/*.sql` | inclui a ação corretiva AC3 (dependência do user mapping) e as 12 pendências conhecidas |
+| 2 | `CLAUDE.md` | **CONCLUÍDO** | 2026-08-19 | commit `45c0397`; `tsc --noEmit` verde; cada afirmação conferida contra `App.tsx`, `client.ts`, `perfis.ts`, `scope.ts`, `acompanhamento.ts`, `pedidosVenda.ts` e `supabase/migrations/*.sql` | inclui a ação corretiva AC3 (dependência do user mapping) e as 12 pendências conhecidas |
 | 3 | ESLint + CI | **CONCLUÍDO** | 2026-08-19 | commit `1a6a311`; 32 problemas encontrados e tratados; `lint` exit 0 com --max-warnings 0, `typecheck` exit 0, `build` 12,03s | 1 exceção documentada (react-refresh). Achado A3 registrado |
 | 3.6 | Visibilidade do corte (A5) | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `5ca1931`; typecheck, lint e build verdes | mitigação, não correção: os números seguem sobre recorte até a Etapa 7. `performance.ts` e `clientGroups.ts` ainda sem aviso |
 | 3.5 | Estados de erro (AC1) | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `abf4435`; typecheck, lint e build verdes | ressalva: verificação visual pendente — roteiro abaixo |

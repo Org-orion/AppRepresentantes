@@ -144,11 +144,13 @@ Todas `security definer` com `set search_path = public`.
 
 ### Migrations
 
-Hoje espalhadas entre `migration/` (`schema_v2.sql`, `01`, `02`, `03_erp_fdw.sql`) e
-`src/lib/supabase/migration-diretores-grupos.sql`. Consolidação prevista — ver Pendências.
+Hoje espalhadas entre `supabase/migrations/` (`schema_v2.sql`, `01`, `02`, `03_erp_fdw.sql`) e
+`supabase/migrations/20260706000100_diretores_e_grupos.sql`. Consolidação prevista — ver Pendências.
 
-> `src/lib/supabase/schema.sql` é **LEGADO** (modelo antigo, com `grant ... to anon`). **Não use como
-> referência.** Será removido.
+Todas em `supabase/migrations/`, com nome no formato `AAAAMMDDHHMMSS_descricao.sql`. As cinco primeiras
+são **histórico já aplicado** em produção — ver `supabase/migrations/README.md`, que diz o que está no
+banco e o que não está. O antigo `src/lib/supabase/schema.sql` (modelo pré-migração, com
+`grant ... to anon`) **foi removido**: descrevia um sistema que não existe mais.
 
 ## Autenticação
 
@@ -242,7 +244,7 @@ Vercel a partir do repositório. Não há pipeline de CI (pendência). Deploy e 
 - **Nota-mãe:** `C:\obsidian\kmz\Aplicações\AppRepresentantes - Concrem Connect.md`
 - **Notas de tela:** `C:\obsidian\kmz\Aplicações\Telas - AppRepresentantes\`
 - **No repositório:** `docs/PLANO-SANEAMENTO.md` · `docs/INCIDENTE-2026-08-19-FDW.md` · `SEGURANCA.md` ·
-  `migration/RESUMO.md`
+  `docs/MIGRACAO-2026-06-RESUMO.md`
 
 > **Autoridade:** este arquivo é o **contexto local do projeto** (nível 5 da
 > [[Cérebro — Hierarquia de Autoridade]]). Segurança, proteção de dados e as regras inegociáveis da Nexus
@@ -285,19 +287,29 @@ documentação do Obsidian avaliada · limitações e riscos residuais declarado
 
 ## Pendências conhecidas
 
-Rastreadas em `docs/PLANO-SANEAMENTO.md`:
+Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
 
-1. `npm run lint` quebrado — ESLint não instalado e sem `eslint.config.js`.
-2. Nenhum teste automatizado e nenhum CI.
-3. Telas sem estado de erro: falha de backend aparece como "nenhum resultado" (causou a detecção tardia do
-   incidente de 2026-08-19).
-4. Turnstile validado só no caminho da UI — `signInWithPassword` continua chamável direto.
-5. "Conferido" da Central Financeira em `localStorage` sem chave por usuário (vaza entre usuários na mesma
-   máquina).
-6. Coluna `telefone` de `concremapprep_usuarios` sem migration versionada.
-7. Migrations espalhadas em dois diretórios; `schema.sql` legado ainda no repositório.
-8. Código morto: `services/{clientes,titulos,pedidos}.ts` + hooks correspondentes e 7 componentes órfãos.
-9. Bundle único de ~3,3 MB, sem code-splitting por rota.
-10. Sem observabilidade: nenhum registro de evento crítico, nenhum alerta.
-11. Banco do Portal em **plano FREE** — pausa por inatividade e retenção de backup limitada, em produção.
-12. `anon` ainda com `select` em tabelas do banco do ERP.
+**Abertas:**
+
+1. **Truncamento em 1.000 registros** — o Data API corta toda consulta em `Max rows = 1000` e vários
+   agregados são calculados sobre esse recorte. As telas já **avisam** (`TruncationNotice`), mas os
+   números só ficam corretos quando os agregados forem para o banco.
+2. **CAPTCHA nativo não habilitado** — o código já envia `captchaToken`; sem ligar no painel do Auth,
+   `signInWithPassword` segue chamável direto.
+3. **`performance.ts` e `clientGroups.ts`** ainda operam sobre dados truncados e sem aviso.
+4. **Código morto** — `services/{clientes,titulos,pedidos}.ts` + hooks correspondentes e 7 componentes órfãos.
+5. **Bundle único de ~3,3 MB**, sem code-splitting por rota.
+6. **Sem observabilidade** — nenhum registro de evento crítico, nenhum alerta.
+7. **Banco do Portal em plano FREE** — pausa por inatividade, sem PITR e com retenção de backup limitada,
+   num sistema de uso diário.
+8. **`anon` ainda com `select`** em tabelas do banco do ERP.
+9. **Falha transitória desloga sessão válida** — `AuthContext` trata erro ao carregar o perfil como
+   ausência de usuário e joga na tela de login.
+10. **Três pedidos com status forjado** em `AcompanhamentoPage.tsx` (`STATUS_OVERRIDE`) — aguardando
+    decisão sobre serem resíduo de demonstração.
+11. **`classifyAnexo` classifica por substring solta** — "conferência" vira nota fiscal. Comportamento
+    travado por teste de caracterização até a regra ser decidida.
+
+**Resolvidas neste ciclo:** `npm run lint` funcionando com ESLint em flat config · CI no GitHub Actions
+(typecheck, lint, testes, build) · 56 testes automatizados · estados de erro nas telas · sessão em
+`sessionStorage` · rewrite de SPA da Vercel (404 ao recarregar) · migrations consolidadas.

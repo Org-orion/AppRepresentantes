@@ -20,20 +20,20 @@ Sair do modelo inseguro (login via RPC custom, todo acesso como `anon`, seguran�
 ## 3. O que foi feito (por fase)
 
 ### Fase 1 — Estrutura e RLS no banco novo
-- `migration/schema_v2.sql`: tabelas do portal, `concremapprep_usuarios.id` ligado a `auth.users(id)`, funções auxiliares (`app_is_admin`, `app_is_operador`, `app_can_*_orcamento`), **RLS habilitado com policies por tabela**, trigger anti-elevação de privilégio, grants para `authenticated`, índices. Removida a FK quebrada `produto_id → concremprodutos_produtos`.
+- `supabase/migrations/20260630000100_schema_v2.sql`: tabelas do portal, `concremapprep_usuarios.id` ligado a `auth.users(id)`, funções auxiliares (`app_is_admin`, `app_is_operador`, `app_can_*_orcamento`), **RLS habilitado com policies por tabela**, trigger anti-elevação de privilégio, grants para `authenticated`, índices. Removida a FK quebrada `produto_id → concremprodutos_produtos`.
 
 ### Fase 2 — Migração de usuários (senhas preservadas)
-- `migration/01_migrate_auth_users.sql`: usuários migrados para `auth.users` + `auth.identities` **reaproveitando o hash bcrypt** — ninguém precisou redefinir senha.
+- `supabase/migrations/20260630000200_migrate_auth_users.sql`: usuários migrados para `auth.users` + `auth.identities` **reaproveitando o hash bcrypt** — ninguém precisou redefinir senha.
 - Feita pelo SQL Editor (gerador de `INSERT` rodado no banco antigo, colado no novo).
 
 ### Fase 3 — Migração dos dados do portal
-- `migration/02_migrate_data_sqleditor.sql`: representantes, vínculos, notificações, orçamentos e itens migrados via geradores de `INSERT`, na ordem de FK.
+- `supabase/migrations/20260630000300_migrate_data.sql`: representantes, vínculos, notificações, orçamentos e itens migrados via geradores de `INSERT`, na ordem de FK.
 
 ### Fase 4 — Gestão de usuários (Edge Functions)
 - `supabase/functions/admin-criar-usuario` e `admin-reset-senha`: criam usuário em `auth.users` e resetam senha usando `service_role`, validando que o chamador é admin. Deployadas com **Verify JWT desligado** (auth feita dentro da função).
 
 ### Fase 5 — Acesso seguro ao ERP (FDW + RLS)
-- `migration/03_erp_fdw.sql`: como os dados do ERP **não podem sair do banco antigo** (alimentados por outra app), o banco novo os lê **ao vivo** via `postgres_fdw`:
+- `supabase/migrations/20260630000400_erp_fdw.sql`: como os dados do ERP **não podem sair do banco antigo** (alimentados por outra app), o banco novo os lê **ao vivo** via `postgres_fdw`:
   - Foreign tables no schema `erp` (ponteiros, sem cópia).
   - Views em `public` com `security_barrier` aplicando RLS por representante (`app_my_rep_codes()` / `app_is_admin()`).
   - `authenticated` só acessa as views; `erp.*` não é exposto.

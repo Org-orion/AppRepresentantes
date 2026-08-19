@@ -8,7 +8,7 @@
 //   representative → representante/operador: só seus rep codes (como hoje).
 //
 // A segurança de verdade é reforçada por RLS no banco (ver
-// src/lib/supabase/migration-diretores-grupos.sql). Este escopo aplica o mesmo
+// supabase/migrations/20260706000100_diretores_e_grupos.sql). Este escopo aplica o mesmo
 // filtro na camada de service para consistência de UI e defesa em profundidade.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { User } from '@/types';

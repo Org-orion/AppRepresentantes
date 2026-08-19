@@ -80,7 +80,7 @@ não está em variável de ambiente e não aparece em nenhuma tela — vive apen
 
 ## Fatores contribuintes
 
-1. **Dependência não documentada no ponto de uso.** O acoplamento estava descrito em `migration/03_erp_fdw.sql`
+1. **Dependência não documentada no ponto de uso.** O acoplamento estava descrito em `supabase/migrations/20260630000400_erp_fdw.sql`
    e no `RESUMO.md`, mas nada avisa quem aperta "Reset database password" no painel do ERP.
 2. **A interface escondeu a falha.** `PedidosPage.tsx` consome apenas `isLoading`/`isFetching` e nunca
    `isError`, então a queda apareceu como **"Nenhum pedido encontrado"** (defeito A2 do plano de saneamento).
@@ -106,7 +106,7 @@ não está em variável de ambiente e não aparece em nenhuma tela — vive apen
 3. Validação por `count(*)` nas foreign tables e conferência visual no app.
 
 Efeito colateral positivo: a senha exposta durante a migração de junho — pendência aberta em
-`migration/RESUMO.md` §7 — deixou de valer. A parte da rotação do ERP da Etapa 1 está cumprida.
+`docs/MIGRACAO-2026-06-RESUMO.md` §7 — deixou de valer. A parte da rotação do ERP da Etapa 1 está cumprida.
 
 ## Risco residual
 

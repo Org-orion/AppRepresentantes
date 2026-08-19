@@ -37,12 +37,12 @@ Cinco coisas, na mesma janela porque tocam o mesmo schema:
 
 | Arquivo | Situação |
 |---|---|
-| `migration/schema_v2.sql` | aplicado |
-| `migration/01_migrate_auth_users.sql` | aplicado |
-| `migration/02_migrate_data_sqleditor.sql` | aplicado |
-| `migration/03_erp_fdw.sql` | aplicado |
-| `src/lib/supabase/migration-diretores-grupos.sql` | aplicado — **fora do diretório de migrations** |
-| `src/lib/supabase/schema.sql` | **LEGADO**, nunca deve ser aplicado |
+| `supabase/migrations/20260630000100_schema_v2.sql` | aplicado |
+| `supabase/migrations/20260630000200_migrate_auth_users.sql` | aplicado |
+| `supabase/migrations/20260630000300_migrate_data.sql` | aplicado |
+| `supabase/migrations/20260630000400_erp_fdw.sql` | aplicado |
+| `supabase/migrations/20260706000100_diretores_e_grupos.sql` | aplicado — vinha de `src/lib/supabase/` |
+| `src/lib/supabase/schema.sql` | **LEGADO** — removido do repositório na parte 7.1 |
 | `ALTER TABLE … ADD COLUMN telefone` | **não versionado** — vive num comentário de `PerfilPage.tsx` |
 
 ---
