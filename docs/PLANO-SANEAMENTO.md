@@ -441,6 +441,54 @@ desconhecido. `npm audit fix` (sem `--force`) resolve dentro do semver e é de b
 **Proposta:** virar etapa própria **depois da Etapa 6 (testes)**, ou antes disso se você preferir aceitar
 o risco de regressão. **PROIBIDO** `npm audit fix --force` — ver [[Cérebro — Dependências e Cadeia de Suprimentos]].
 
+### A4 — Status inventado para três pedidos, fixo no código
+
+`src/pages/AcompanhamentoPage.tsx:501-502`:
+
+```ts
+const STATUS_OVERRIDE = { '135732': 'mapeamento', '135128': 'producao', '133469': 'finalizado' };
+const OVERRIDE_ORDER  = ['133469', '135128', '135732'];
+```
+
+Três números de pedido fixos que **sobrescrevem o status real vindo do ERP**, **apagam o histórico**
+desses pedidos na tela (`logs: []`) e os **empurram para o topo** da lista, fora de qualquer ordenação.
+
+Se o pedido `133469` estiver em produção no ERP, a Central de Acompanhamento afirma "finalizado".
+Tem cara de ajuste de demonstração que ficou no código. **Aguarda decisão:** intencional ou resíduo?
+
+### A5 — Truncamento silencioso em 1.000 registros
+
+**CONFIRMADO** com evidência HTTP: a consulta da Central de Acompanhamento volta
+`Status 200` · `Content-Range: 0-999/*` · payload com exatamente 1.000 itens — e a tela anuncia
+**"1.000 pedido(s) em acompanhamento"** como se fosse o total. A base tem ~7.600 pedidos válidos.
+
+**Causa:** `fetchAcompanhamento` (`src/services/acompanhamento.ts:72`) não define `.limit()` nem
+`.range()`. O PostgREST aplica o teto do projeto (aparentemente `db-max-rows = 1000`) e devolve a
+primeira página **sem que nada no app perceba**.
+
+**Consequência:** todos os KPIs da tela — 260 aprovados, 303 em produção, 266 parados, 338 docs
+pendentes, 481 em atraso — são calculados sobre um subconjunto arbitrário (os 1.000 mais recentes por
+`data_emissao`), e apresentados como se fossem o quadro completo. Um gestor decide prioridade de
+produção olhando esses números.
+
+**Mesma falta em outros serviços** (consultam `concrem_pedidos_venda` sem `limit`/`range`):
+
+| Serviço | Alimenta |
+|---|---|
+| `dashboard.ts:102` | KPIs do Dashboard, pipeline, insights, tendência |
+| `financeiro.ts:55` e `:152` | Central Financeira e anexos |
+
+**PENDENTE DE EVIDÊNCIA:** se o teto do projeto for mesmo `db-max-rows = 1000`, então os `.limit()`
+explícitos maiores **também** são cortados — `carteira.ts` (5.000), `performance.ts` (50.000),
+`clientGroups.ts` (50.000) e `pedidosVenda.ts` (`CENTRAL_CAP` 1.500). Nesse caso a Central de Pedidos
+exibe "exibindo os 1.500 mais recentes" enquanto recebeu 1.000, e praticamente **todo agregado do app**
+está calculado sobre 1.000 de 7.600 registros. Confirmar pelo `Content-Range` de uma consulta com
+`limit` explícito.
+
+Contraria [[Cérebro — Acessibilidade, UX e Padrões de Interface]] e o princípio de **não truncar em
+silêncio**: se um recorte é aplicado, a tela precisa dizer — como a Central de Pedidos já faz com
+`truncated`.
+
 ## Verificação visual pendente — Etapa 3.5
 
 Roteiro reproduzível, ~2 minutos, sem tocar em nada:
