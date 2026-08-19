@@ -379,12 +379,45 @@ ela vira risco residual registrado e eu sigo pela Etapa 2.
 
 ---
 
+## Achados durante a execução
+
+### A1 — INCIDENTE ATIVO (2026-08-19, ~09:55): FDW fora do ar
+
+**Evidência:** logs Postgres do Portal com centenas de `could not connect to server "erp_test"`;
+Central de Pedidos exibindo **0 pedidos** para um usuário administrador; Portal saudável
+(9/60 conexões, CPU 2,91%, nenhuma query bloqueada) — ou seja, o problema é o **lado do ERP**, não o Portal.
+
+**Impacto:** Pedidos, Acompanhamento, Central Financeira, Carteira e dashboards de diretor sem dados
+para **todos** os perfis. Orçamentos (tabela nativa) seguem normais.
+
+**Consequência no plano:** a **Etapa 1 está BLOQUEADA**. Rotacionar a senha do ERP com o FDW já caído
+impede a própria validação do passo 5 e mistura duas causas no mesmo diagnóstico.
+
+**Tratamento:** restabelecer a conexão primeiro (ver `docs/ETAPA-1-ROTACAO-SEGREDOS.md`, seção de
+diagnóstico), depois retomar a Etapa 1.
+
+### A2 — DEFEITO: falha do backend é exibida como "nenhum resultado"
+
+`src/pages/PedidosPage.tsx:523` consome apenas `isLoading` e `isFetching` do React Query — **nunca `isError`**.
+O serviço faz `throw error` corretamente (`pedidosVenda.ts:122`), mas a tela renderiza o estado vazio.
+
+Foi exatamente o que aconteceu no incidente A1: o app disse **"Nenhum pedido encontrado"** enquanto o
+banco não conseguia falar com o ERP. O representante não tem como distinguir "não há pedidos" de
+"o sistema está fora".
+
+Contraria [[Cérebro — Acessibilidade, UX e Padrões de Interface]] (estados obrigatórios: carregando,
+vazio, **erro**, sucesso) e esconde incidente de produção.
+
+**Escopo da correção:** estado de erro real em Pedidos, Acompanhamento, Central Financeira, Carteira e
+Dashboard — com mensagem acionável e opção de tentar de novo. **Proposta:** virar a **Etapa 3.5**,
+logo depois do portão de qualidade e antes da mudança de sessão, por ser defeito visível em produção.
+
 ## Registro de execução
 
 | Etapa | Assunto | Estado | Data | Evidência | Observações |
 |---|---|---|---|---|---|
 | 0 | Baseline + branch | **CONCLUÍDO** | 2026-08-19 | branch `chore/saneamento` criada de `fa53856`; commit `452b2f3`; working tree com os 3 arquivos preservados | baseline da tabela acima; nada de código alterado |
-| 1 | Segredos e banco antigo | PENDENTE | — | — | execução do responsável humano; não bloqueia as demais |
+| 1 | Segredos e banco antigo | **BLOQUEADO** | 2026-08-19 | logs do Portal: `could not connect to server "erp_test"`; app com 0 pedidos | incidente A1 — FDW caído. Retomar só após restabelecer a conexão |
 | 2 | `CLAUDE.md` | PENDENTE | — | — | — |
 | 3 | ESLint + CI | PENDENTE | — | — | — |
 | 4 | Sessão | PENDENTE | — | — | D1 aprovada (relogin sempre) |
