@@ -383,7 +383,7 @@ ela vira risco residual registrado e eu sigo pela Etapa 2.
 
 | Etapa | Assunto | Estado | Data | Evidência | Observações |
 |---|---|---|---|---|---|
-| 0 | Baseline + branch | PENDENTE | — | — | liberada (D5 aprovada) |
+| 0 | Baseline + branch | **CONCLUÍDO** | 2026-08-19 | branch `chore/saneamento` criada de `fa53856`; commit `452b2f3`; working tree com os 3 arquivos preservados | baseline da tabela acima; nada de código alterado |
 | 1 | Segredos e banco antigo | PENDENTE | — | — | execução do responsável humano; não bloqueia as demais |
 | 2 | `CLAUDE.md` | PENDENTE | — | — | — |
 | 3 | ESLint + CI | PENDENTE | — | — | — |
