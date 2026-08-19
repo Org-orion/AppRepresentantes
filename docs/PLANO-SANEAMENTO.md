@@ -538,7 +538,7 @@ que renderiza cada tela em estado de erro.
 | 3 | ESLint + CI | **CONCLUÍDO** | 2026-08-19 | commit `1a6a311`; 32 problemas encontrados e tratados; `lint` exit 0 com --max-warnings 0, `typecheck` exit 0, `build` 12,03s | 1 exceção documentada (react-refresh). Achado A3 registrado |
 | 3.6 | Visibilidade do corte (A5) | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `5ca1931`; typecheck, lint e build verdes | mitigação, não correção: os números seguem sobre recorte até a Etapa 7. `performance.ts` e `clientGroups.ts` ainda sem aviso |
 | 3.5 | Estados de erro (AC1) | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `abf4435`; typecheck, lint e build verdes | ressalva: verificação visual pendente — roteiro abaixo |
-| 4 | Sessão | PENDENTE | — | — | D1 aprovada (relogin sempre) |
+| 4 | Sessão | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `96a7d12`; typecheck, lint e build verdes; inspeção descarta quebra de fluxo por nova aba | ressalva: matriz de 10 cenários em `docs/ETAPA-4-VERIFICACAO-SESSAO.md` aguarda execução manual; cenário de expiração de token NÃO VERIFICADO |
 | 5 | Anti-força-bruta | PENDENTE | — | — | D2 aprovada; passo de painel é seu |
 | 6 | Testes | PENDENTE | — | — | — |
 | 7 | Migrations | PENDENTE | — | — | aguarda D3 + autorização de banco |
