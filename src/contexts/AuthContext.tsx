@@ -15,7 +15,7 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   isAuthenticated: boolean;
-  login: (credentials: { email: string; password: string }) => Promise<{ error: string | null }>;
+  login: (credentials: { email: string; password: string; captchaToken?: string }) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
   /** Recarrega o perfil do usuário atual (ex.: após editar nome/telefone). */
   refreshUser: () => Promise<void>;
@@ -168,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async ({ email, password }: { email: string; password: string }) => {
+  const login = useCallback(async ({ email, password, captchaToken }: { email: string; password: string; captchaToken?: string }) => {
     if (USE_MOCK) {
       setAuthState({ user: MOCK_USER, loading: false, error: null });
       return { error: null };
@@ -176,9 +176,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setAuthState(prev => ({ ...prev, loading: true, error: null }));
 
+    // captchaToken vai para o PRÓPRIO servidor de auth. É isso que fecha o
+    // bypass: antes o Turnstile era conferido só no caminho da interface, e
+    // signInWithPassword continuava chamável direto com a anon key (que vai no
+    // bundle). Com o CAPTCHA habilitado no painel do Auth, o servidor exige o
+    // token e a chamada direta é recusada.
     const { error } = await supabase.auth.signInWithPassword({
       email: email.toLowerCase().trim(),
       password,
+      options: { captchaToken },
     });
 
     if (error) {

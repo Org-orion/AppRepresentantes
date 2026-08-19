@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { motion, useReducedMotion, type Variants } from 'framer-motion';
 import { Turnstile } from 'react-turnstile';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase/client';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import CinematicBackdrop from '@/components/login/CinematicBackdrop';
 import LoginField, { loginItemVariants } from '@/components/login/LoginField';
@@ -35,23 +34,20 @@ export default function LoginPage() {
     e.preventDefault();
     setTurnstileError(null);
 
-    // Verificar token Turnstile na Edge Function antes do login
-    try {
-      const { data, error: fnError } = await supabase.functions.invoke('verificar-turnstile', {
-        body: { token: turnstileToken },
-      });
-      if (fnError || !data?.success) {
-        setTurnstileError(data?.error ?? 'Verificação de segurança falhou. Tente novamente.');
-        resetTurnstile();
-        return;
-      }
-    } catch {
-      setTurnstileError('Erro ao verificar segurança. Tente novamente.');
-      resetTurnstile();
+    if (!turnstileToken) {
+      setTurnstileError('Complete a verificação de segurança antes de entrar.');
       return;
     }
 
-    await login({ email, password });
+    // O token vai junto do login, para ser validado pelo próprio servidor de auth
+    // do Supabase (CAPTCHA nativo). Antes ele era conferido numa Edge Function
+    // ANTES do login — o que protegia apenas o caminho da interface: quem chamasse
+    // signInWithPassword direto com a anon key passava por fora.
+    //
+    // O token do Turnstile é de USO ÚNICO. Por isso as duas verificações não podem
+    // coexistir: se a Edge Function o resgatasse primeiro, o servidor de auth
+    // recusaria o mesmo token depois. A troca é substituição, não acréscimo.
+    await login({ email, password, captchaToken: turnstileToken });
     resetTurnstile();
   };
 

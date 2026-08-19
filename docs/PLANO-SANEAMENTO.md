@@ -618,7 +618,7 @@ que renderiza cada tela em estado de erro.
 | 3.6 | Visibilidade do corte (A5) | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `5ca1931`; typecheck, lint e build verdes | mitigação, não correção: os números seguem sobre recorte até a Etapa 7. `performance.ts` e `clientGroups.ts` ainda sem aviso |
 | 3.5 | Estados de erro (AC1) | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `abf4435`; typecheck, lint e build verdes | ressalva: verificação visual pendente — roteiro abaixo |
 | 4 | Sessão | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `96a7d12`; typecheck, lint e build verdes; inspeção descarta quebra de fluxo por nova aba | ressalva: matriz de 10 cenários em `docs/ETAPA-4-VERIFICACAO-SESSAO.md` aguarda execução manual; cenário de expiração de token NÃO VERIFICADO |
-| 5 | Anti-força-bruta | PENDENTE | — | — | D2 aprovada; passo de painel é seu |
+| 5 | Anti-força-bruta | **PARCIAL** | 2026-08-19 | commit da etapa; typecheck, lint e build verdes | código pronto (envia `captchaToken`, Edge Function não é mais chamada). **Falta a parte de painel** — roteiro em `docs/ETAPA-5-CAPTCHA-NATIVO.md`, com ordem obrigatória |
 | 6 | Testes | PENDENTE | — | — | — |
 | 7 | Migrations | PENDENTE | — | — | aguarda D3 + autorização de banco |
 | 8 | Conferido no banco | PENDENTE | — | — | D4 aprovada; depende da Etapa 7 |
