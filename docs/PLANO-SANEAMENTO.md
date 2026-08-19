@@ -422,8 +422,8 @@ logo depois do portão de qualidade e antes da mudança de sessão, por ser defe
 | Etapa | Assunto | Estado | Data | Evidência | Observações |
 |---|---|---|---|---|---|
 | 0 | Baseline + branch | **CONCLUÍDO** | 2026-08-19 | branch `chore/saneamento` criada de `fa53856`; commit `452b2f3`; working tree com os 3 arquivos preservados | baseline da tabela acima; nada de código alterado |
-| 1 | Segredos e banco antigo | **PARCIAL** | 2026-08-19 | senha do ERP rotacionada e gravada no user mapping; `count(*)` = 31.906; app com 7.595 pedidos | incidente A1 resolvido. **Falta:** rotacionar a senha do Portal e a parte 1.2 (revogar `anon`) |
-| 2 | `CLAUDE.md` | PENDENTE | — | — | — |
+| 1 | Segredos e banco antigo | **PARCIAL** | 2026-08-19 | senhas do ERP e do Portal rotacionadas; user mapping atualizado; `count(*)` = 31.906; app com 7.595 pedidos | 1.1 concluída (incidente A1 resolvido). **Falta 1.2** (revogar `anon`) — travada até saber quem pediu a migration `grant_anon_access_co…` no ERP |
+| 2 | `CLAUDE.md` | **CONCLUÍDO** | 2026-08-19 | commit `45c0397`; `tsc --noEmit` verde; cada afirmação conferida contra `App.tsx`, `client.ts`, `perfis.ts`, `scope.ts`, `acompanhamento.ts`, `pedidosVenda.ts` e `migration/*.sql` | inclui a ação corretiva AC3 (dependência do user mapping) e as 12 pendências conhecidas |
 | 3 | ESLint + CI | PENDENTE | — | — | — |
 | 4 | Sessão | PENDENTE | — | — | D1 aprovada (relogin sempre) |
 | 5 | Anti-força-bruta | PENDENTE | — | — | D2 aprovada; passo de painel é seu |
