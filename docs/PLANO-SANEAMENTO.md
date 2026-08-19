@@ -510,6 +510,33 @@ Contraria [[Cérebro — Acessibilidade, UX e Padrões de Interface]] e o princ�
 silêncio**: se um recorte é aplicado, a tela precisa dizer — como a Central de Pedidos já faz com
 `truncated`.
 
+### A6 — Falha de rede momentânea desloga quem tem sessão válida
+
+`src/contexts/AuthContext.tsx:156-161`:
+
+```ts
+try {
+  const user = await buildUser(session.user);
+  ...
+} catch {
+  setAuthState({ user: null, loading: false, error: 'Falha ao carregar perfil' });
+}
+```
+
+A sessão do Supabase Auth continua **válida** em `sessionStorage`, mas o app zera o usuário — e como
+`App.tsx` renderiza `LoginPage` para qualquer rota sem usuário, a pessoa é jogada na tela de login.
+
+**Confunde duas coisas diferentes:** "não há sessão" e "há sessão, mas a consulta do perfil falhou".
+A segunda é transitória; tratá-la como a primeira faz o usuário achar que caiu a conta.
+
+**Quando morde:** queda momentânea de rede, instabilidade do banco, ou um novo episódio como o
+INC-2026-08-19-FDW — se `concremapprep_usuarios` ficar inacessível, **todo mundo** é mandado para o
+login, com sessão boa no bolso.
+
+**Correção proposta:** distinguir os dois casos — manter o usuário na aplicação, exibir estado de erro
+com "tentar novamente" (mesmo padrão do `DataError`) e só derrubar a sessão quando o Supabase Auth
+disser que ela acabou. Entra como **Etapa 4.1**, junto do resto de autenticação.
+
 ## Verificação visual pendente — Etapa 3.5
 
 Roteiro reproduzível, ~2 minutos, sem tocar em nada:
