@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import { VALID_ID_NOTA_CONF } from '@/constants/orderFilters';
+import { API_MAX_ROWS } from '@/constants/apiLimits';
 import { mapStatus } from '@/services/acompanhamento';
 import type { PedidoVenda, PedidoDadosTabela, PedidoItemERP, PedidoAnexo } from '@/types';
 
@@ -7,7 +8,10 @@ export const PAGE_SIZE = 50;
 
 // Teto de linhas carregadas na Central de Pedidos (modo client-side).
 // Cobre com folga a carteira de um representante; admin sem filtro pode truncar.
-export const CENTRAL_CAP = 1500;
+// NOTA: o Data API corta em API_MAX_ROWS (1.000), então este teto só valeria se
+// fosse MENOR que ele. Hoje é decorativo — mantido porque a Etapa 7 do
+// docs/PLANO-SANEAMENTO.md vai mover os agregados para o banco e redefinir isto.
+export const CENTRAL_CAP = Math.min(1500, API_MAX_ROWS);
 
 // Representantes excluídos de todas as consultas (vendas diretas)
 export const REP_EXCLUIDOS = ['40001498 - JANDERSON LEROY MERLIN'];
@@ -170,7 +174,14 @@ export async function fetchPedidosVenda(params: FetchPedidosParams): Promise<Fet
 export interface FetchPedidosCompletoResult {
   data: PedidoVenda[];
   total: number;
-  truncated: boolean;   // true quando o total excede o CENTRAL_CAP
+  /**
+   * true quando a lista devolvida NÃO é o conjunto filtrado inteiro.
+   *
+   * Antes isto era `total > CENTRAL_CAP`, o que descrevia a intenção do código e
+   * não a realidade: o Data API corta em API_MAX_ROWS (1.000) e o `.limit(1500)`
+   * nunca foi respeitado. Agora sai do que de fato chegou.
+   */
+  truncated: boolean;
 }
 
 // Carrega o conjunto filtrado inteiro (até CENTRAL_CAP) para a Central de
@@ -210,7 +221,8 @@ export async function fetchPedidosCompleto(params: FetchPedidosParams): Promise<
   const pedidos = (data ?? []) as PedidoVenda[];
   await enriquecerPedidos(pedidos);
 
-  return { data: pedidos, total: count ?? pedidos.length, truncated: (count ?? 0) > CENTRAL_CAP };
+  const total = count ?? pedidos.length;
+  return { data: pedidos, total, truncated: pedidos.length < total };
 }
 
 export async function fetchSituacoesEntrega(): Promise<string[]> {

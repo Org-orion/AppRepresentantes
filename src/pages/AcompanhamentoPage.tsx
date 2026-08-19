@@ -6,6 +6,8 @@ import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
 import PageContainer from '@/components/ui/PageContainer';
 import DataError from '@/components/ui/DataError';
+import TruncationNotice from '@/components/ui/TruncationNotice';
+import { atingiuTeto } from '@/constants/apiLimits';
 import MobileBottomSheet from '@/components/ui/MobileBottomSheet';
 import {
   CheckCircle2, Unlock, Map as MapIcon, Wrench, Handshake, Factory, FileCheck2, Truck,
@@ -650,6 +652,8 @@ export default function AcompanhamentoPage() {
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Central de Acompanhamento</h1>
         <p className="text-sm text-gray-500 mt-0.5">{isLoading ? 'Carregando...' : `${kpis.total.toLocaleString('pt-BR')} pedido(s) em acompanhamento`}</p>
       </div>
+
+      {atingiuTeto(pedidosRaw.length) && <TruncationNotice itens="pedidos" carregados={pedidosRaw.length} />}
 
       {/* KPIs */}
       {isLoading ? (

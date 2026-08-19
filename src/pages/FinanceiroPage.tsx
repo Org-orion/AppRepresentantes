@@ -6,6 +6,7 @@ import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
 import PageContainer from '@/components/ui/PageContainer';
 import DataError from '@/components/ui/DataError';
+import TruncationNotice from '@/components/ui/TruncationNotice';
 import {
   FileText, Receipt, Download, Paperclip, X, Check, AlertTriangle, SlidersHorizontal,
   List, LayoutGrid, Activity, ChevronRight, CheckCircle2, CircleDashed, Sparkles,
@@ -636,6 +637,8 @@ export default function FinanceiroPage() {
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Central Financeira</h1>
         <p className="text-sm text-gray-500 mt-0.5">{isLoading ? 'Carregando...' : `${pedidos.length.toLocaleString('pt-BR')} pedido(s) · notas fiscais e boletos`}</p>
       </div>
+
+      {pedidos.truncado && <TruncationNotice itens="documentos" />}
 
       {/* KPIs */}
       {isLoading ? (

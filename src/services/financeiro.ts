@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import { VALID_ID_NOTA_CONF } from '@/constants/orderFilters';
+import { atingiuTeto, marcarComo, type ListaTruncavel } from '@/constants/apiLimits';
 import { REP_EXCLUIDOS } from '@/services/pedidosVenda';
 
 // A tela Financeiro mostra os documentos (NF/boleto) de cada pedido.
@@ -108,7 +109,7 @@ export interface FetchFinanceiroParams { repCodes?: string[]; admin?: boolean; g
 // Valores brutos do ERP que indicam "faturado ou além"
 const FATURADO_RAW = ['faturado', 'em_entrega', 'entregue', 'finalizado'];
 
-export async function fetchFinanceiro(params: FetchFinanceiroParams): Promise<PedidoFinanceiro[]> {
+export async function fetchFinanceiro(params: FetchFinanceiroParams): Promise<ListaTruncavel<PedidoFinanceiro>> {
   const { repCodes = [], admin = false, grupos = null } = params;
   if (grupos == null && !admin && repCodes.length === 0) return [];
 
@@ -160,8 +161,12 @@ export async function fetchFinanceiro(params: FetchFinanceiroParams): Promise<Pe
     for (const row of (data ?? []) as Info[]) info.set(row.numero_pedido, row);
   }
 
+  // Duas consultas desta função podem ser cortadas pelo teto do Data API: os
+  // anexos e os status faturados. Qualquer uma das duas invalida a contagem.
+  const truncado = atingiuTeto(anexos?.length ?? 0) || atingiuTeto(statusFat?.length ?? 0);
+
   // 4. Monta — apenas pedidos no escopo (info presente)
-  return numeros
+  const lista = numeros
     .map(numero => {
       const i = info.get(numero);
       if (!i) return null;
@@ -182,4 +187,6 @@ export async function fetchFinanceiro(params: FetchFinanceiroParams): Promise<Pe
     })
     .filter((p): p is PedidoFinanceiro => p !== null)
     .sort((a, b) => (b.data_emissao || '').localeCompare(a.data_emissao || ''));
+
+  return marcarComo(lista, truncado);
 }

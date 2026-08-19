@@ -12,6 +12,7 @@ import { useRepresentantesUnicos } from '@/hooks/usePedidosVenda';
 import { formatCurrency, formatCurrencyK, formatDate, formatDateLong } from '@/utils/formatters';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import PageContainer from '@/components/ui/PageContainer';
+import TruncationNotice from '@/components/ui/TruncationNotice';
 import Select from '@/components/ui/Select';
 import {
   AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -747,6 +748,8 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Olá, {nome} 👋</h1>
         <p className="text-sm text-gray-500 mt-1 capitalize">Portal do Representante · {formatDateLong(today)}</p>
       </div>
+
+      {stats?.truncado && <TruncationNotice itens="pedidos" total={stats.totalPedidos} />}
 
       {/* ── Aviso de dados incompletos ── */}
       {dadosIncompletos && (

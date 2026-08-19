@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import { VALID_ID_NOTA_CONF } from '@/constants/orderFilters';
+import { API_MAX_ROWS, marcarTruncamento, type ListaTruncavel } from '@/constants/apiLimits';
 
 export interface ClienteCarteira {
   cliente_codigo: string;
@@ -38,7 +39,7 @@ const CAMPOS = [
   'total_pedido_venda',
 ].join(',');
 
-export async function fetchCarteira(params: FetchCarteiraParams): Promise<ClienteCarteira[]> {
+export async function fetchCarteira(params: FetchCarteiraParams): Promise<ListaTruncavel<ClienteCarteira>> {
   const { repCodes = [], admin = false, grupos = null, representante } = params;
 
   if (grupos == null && !admin && repCodes.length === 0) return [];
@@ -47,7 +48,7 @@ export async function fetchCarteira(params: FetchCarteiraParams): Promise<Client
     .from('concrem_pedidos_venda')
     .select(CAMPOS)
     .in('id_nota_conf', VALID_ID_NOTA_CONF)
-    .limit(5000);
+    .limit(API_MAX_ROWS);
 
   if (grupos != null) {
     query = query.in('grupo_cliente', grupos);
@@ -97,12 +98,16 @@ export async function fetchCarteira(params: FetchCarteiraParams): Promise<Client
     }
   }
 
-  return Array.from(map.values())
+  const clientes = Array.from(map.values())
     .sort((a, b) => {
       const nomeA = (a.cliente_fantasia?.trim() || a.cliente_nome).toLowerCase();
       const nomeB = (b.cliente_fantasia?.trim() || b.cliente_nome).toLowerCase();
       return nomeA.localeCompare(nomeB, 'pt-BR');
     });
+
+  // Quem foi cortado pelo teto foram os PEDIDOS que originaram estes clientes —
+  // por isso a marca vem do nº de linhas cruas, não do tamanho da lista devolvida.
+  return marcarTruncamento(clientes, data?.length ?? 0);
 }
 
 // ─── Pedidos de um cliente (para o painel de inteligência) ──────────────────

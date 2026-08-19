@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import { VALID_ID_NOTA_CONF } from '@/constants/orderFilters';
+import { atingiuTeto } from '@/constants/apiLimits';
 import { mapStatus } from '@/services/acompanhamento';
 import { REP_EXCLUIDOS } from '@/services/pedidosVenda';
 import type { PedidoStatus } from '@/types';
@@ -29,6 +30,8 @@ export interface DashboardStats {
   pedidosNoPeriodo:      number;   // pedidos emitidos no período selecionado
   // Financeiro por mês (últimos 6 meses) para o gráfico
   vendasMensais: { mes: string; valor: number }[];
+  /** true quando a leitura de pedidos bateu no teto do Data API (ver constants/apiLimits). */
+  truncado: boolean;
 }
 
 export type PeriodoFiltro = 'mes' | 'trimestre' | 'ano';
@@ -56,6 +59,7 @@ const EMPTY_STATS: DashboardStats = {
   totalPedidos:       0,
   pedidosNoPeriodo:   0,
   vendasMensais:      [],
+  truncado:           false,
 };
 
 // ─── Helpers de data ──────────────────────────────────────────
@@ -229,5 +233,7 @@ export async function fetchDashboardStats(
     totalPedidos,
     pedidosNoPeriodo: pedidosMes.length,
     vendasMensais,
+    // Bateu no teto do Data API → tudo acima é recorte, não o conjunto.
+    truncado: atingiuTeto(pedidosData.length),
   };
 }

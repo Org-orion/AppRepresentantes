@@ -5,6 +5,7 @@ import SearchInput from '@/components/ui/SearchInput';
 import Select from '@/components/ui/Select';
 import PageContainer from '@/components/ui/PageContainer';
 import DataError from '@/components/ui/DataError';
+import TruncationNotice from '@/components/ui/TruncationNotice';
 import { cn } from '@/utils/cn';
 import { MetricCard } from '@/components/ui/cards';
 import { useSearchParams } from 'react-router-dom';
@@ -844,6 +845,10 @@ export default function ClientesPage() {
       <div className="mb-3">
         <ClienteViewToggle view={view} onChange={setView} />
       </div>
+
+      {view === 'clientes' && clientes.truncado && (
+        <div className="mb-3"><TruncationNotice itens="pedidos" /></div>
+      )}
 
       {view === 'grupos' ? (
         <ClientGroupsView />

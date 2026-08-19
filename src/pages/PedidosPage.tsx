@@ -8,6 +8,7 @@ import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
 import PageContainer from '@/components/ui/PageContainer';
 import DataError from '@/components/ui/DataError';
+import TruncationNotice from '@/components/ui/TruncationNotice';
 import {
   AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -24,7 +25,7 @@ import type { PedidoVenda } from '@/types';
 import { usePedidosCompleto, useRepresentantesUnicos, useSituacoesEntrega } from '@/hooks/usePedidosVenda';
 import { useIsDesktop } from '@/hooks/useMediaQuery';
 import MobileBottomSheet from '@/components/ui/MobileBottomSheet';
-import { getPedidoItens, fetchPedidoHistorico, CENTRAL_CAP } from '@/services/pedidosVenda';
+import { getPedidoItens, fetchPedidoHistorico } from '@/services/pedidosVenda';
 import {
   ETAPAS, ETAPA_META, etapaDe, temNF, temBoleto, faturadoOuAlem, docsPendentes,
   emAtraso, numItens, nomeCliente, classifyAnexo, type Etapa,
@@ -675,7 +676,7 @@ export default function PedidosPage() {
           <p className="text-sm text-gray-500 mt-0.5">
             {isLoading ? 'Carregando...' : `${kpis.total.toLocaleString('pt-BR')} pedido(s)`}
             {quick.size > 0 && !isLoading && <span className="text-gray-400"> · {filtrados.length} após filtros rápidos</span>}
-            {result?.truncated && <span className="text-amber-600"> · exibindo os {CENTRAL_CAP.toLocaleString('pt-BR')} mais recentes</span>}
+            {result?.truncated && <span className="text-amber-600"> · exibindo os {(result?.data.length ?? 0).toLocaleString('pt-BR')} mais recentes</span>}
           </p>
         </div>
         <button
@@ -688,6 +689,10 @@ export default function PedidosPage() {
           Inteligência
         </button>
       </div>
+
+      {result?.truncated && (
+        <TruncationNotice itens="pedidos" total={result.total} carregados={result.data.length} />
+      )}
 
       {/* KPIs — scroll horizontal no mobile, grid no desktop */}
       {isLoading ? (
