@@ -6,6 +6,27 @@
 
 ---
 
+## Acessos rápidos
+
+**Banco do PORTAL** — projeto `ikjeyaxfciferyezxskh` ("apprepresentatives")
+
+| Para quê | Link |
+|---|---|
+| SQL Editor (passos 1, 4 e 5) | https://supabase.com/dashboard/project/ikjeyaxfciferyezxskh/sql/new |
+| Reset da senha do banco (passo 2) | https://supabase.com/dashboard/project/ikjeyaxfciferyezxskh/settings/database |
+| Conferir backups/PITR (pré-condição) | https://supabase.com/dashboard/project/ikjeyaxfciferyezxskh/database/backups |
+
+**Banco do ERP** — projeto `ctntlgvoefdbjxvfkahp` ("concrem"), compartilhado com outra aplicação
+
+| Para quê | Link |
+|---|---|
+| Reset da senha do banco (passo 3) | https://supabase.com/dashboard/project/ctntlgvoefdbjxvfkahp/settings/database |
+| SQL Editor (parte 1.2) | https://supabase.com/dashboard/project/ctntlgvoefdbjxvfkahp/sql/new |
+| Conferir backups/PITR (pré-condição) | https://supabase.com/dashboard/project/ctntlgvoefdbjxvfkahp/database/backups |
+
+**Aplicação** — https://representativesap.vercel.app/ (URL declarada em `index.html`; se houver domínio
+próprio em uso, valide por ele)
+
 ## Por que isto é a primeira etapa
 
 Durante a migração de junho, senhas de banco apareceram em texto claro. Segredo exposto é o item de
