@@ -441,6 +441,24 @@ desconhecido. `npm audit fix` (sem `--force`) resolve dentro do semver e é de b
 **Proposta:** virar etapa própria **depois da Etapa 6 (testes)**, ou antes disso se você preferir aceitar
 o risco de regressão. **PROIBIDO** `npm audit fix --force` — ver [[Cérebro — Dependências e Cadeia de Suprimentos]].
 
+## Verificação visual pendente — Etapa 3.5
+
+Roteiro reproduzível, ~2 minutos, sem tocar em nada:
+
+1. Abrir o portal e fazer login normalmente.
+2. DevTools (F12) → aba Network → marcar **Offline**.
+3. Navegar para Pedidos, Acompanhamento, Financeiro e Carteira de Clientes.
+   **Esperado:** cartão vermelho "Não foi possível carregar …" com botão
+   "Tentar novamente" — **nunca** "Nenhum pedido encontrado".
+4. Abrir o Dashboard. **Esperado:** faixa âmbar "Alguns dados não puderam ser
+   carregados" acima dos KPIs.
+5. Desmarcar Offline e clicar em "Tentar novamente". **Esperado:** os dados voltam
+   sem precisar recarregar a página.
+
+Evidência a registrar: uma captura por tela. Enquanto não houver, a etapa fica
+como CONCLUÍDO COM RESSALVAS. A evidência definitiva vem na Etapa 6, com um teste
+que renderiza cada tela em estado de erro.
+
 ## Registro de execução
 
 | Etapa | Assunto | Estado | Data | Evidência | Observações |
@@ -449,6 +467,7 @@ o risco de regressão. **PROIBIDO** `npm audit fix --force` — ver [[Cérebro �
 | 1 | Segredos e banco antigo | **PARCIAL** | 2026-08-19 | senhas do ERP e do Portal rotacionadas; user mapping atualizado; `count(*)` = 31.906; app com 7.595 pedidos | 1.1 concluída (incidente A1 resolvido). **Falta 1.2** (revogar `anon`) — travada até saber quem pediu a migration `grant_anon_access_co…` no ERP |
 | 2 | `CLAUDE.md` | **CONCLUÍDO** | 2026-08-19 | commit `45c0397`; `tsc --noEmit` verde; cada afirmação conferida contra `App.tsx`, `client.ts`, `perfis.ts`, `scope.ts`, `acompanhamento.ts`, `pedidosVenda.ts` e `migration/*.sql` | inclui a ação corretiva AC3 (dependência do user mapping) e as 12 pendências conhecidas |
 | 3 | ESLint + CI | **CONCLUÍDO** | 2026-08-19 | commit `1a6a311`; 32 problemas encontrados e tratados; `lint` exit 0 com --max-warnings 0, `typecheck` exit 0, `build` 12,03s | 1 exceção documentada (react-refresh). Achado A3 registrado |
+| 3.5 | Estados de erro (AC1) | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `abf4435`; typecheck, lint e build verdes | ressalva: verificação visual pendente — roteiro abaixo |
 | 4 | Sessão | PENDENTE | — | — | D1 aprovada (relogin sempre) |
 | 5 | Anti-força-bruta | PENDENTE | — | — | D2 aprovada; passo de painel é seu |
 | 6 | Testes | PENDENTE | — | — | — |
