@@ -270,6 +270,12 @@ não tem migration nenhuma — vive como comentário no topo de `PerfilPage.tsx`
   pedido, timestamp; PK composta para ser idempotente; **RLS ligada** com policy de que cada um só lê e
   escreve as próprias marcações; índice por usuário; grants para `authenticated`.
 - Se D3 disser que operador deve ver tudo: `or app_is_operador()` nas views de pedidos/status.
+- **Agregados no banco (Opção B do achado A5 — APROVADA em 2026-08-19):** funções/views que devolvem
+  os indicadores prontos em vez de o navegador baixar milhares de linhas para contar — contagem por
+  estágio do pipeline, pedidos parados, atrasados, documentos pendentes, totais por representante e
+  por grupo de cliente. As listas continuam paginadas. Depois disso, os avisos de truncamento saem
+  das telas de indicador (deixam de ser necessários) e `performance.ts` / `clientGroups.ts` param de
+  operar sobre recorte.
 - Remoção do `src/lib/supabase/schema.sql` legado (modelo antigo, com `grant ... to anon`).
 
 **Verificação:** aplicar num banco/branch de teste antes; depois, com autorização, em produção; validar
@@ -530,6 +536,7 @@ que renderiza cada tela em estado de erro.
 | 1 | Segredos e banco antigo | **PARCIAL** | 2026-08-19 | senhas do ERP e do Portal rotacionadas; user mapping atualizado; `count(*)` = 31.906; app com 7.595 pedidos | 1.1 concluída (incidente A1 resolvido). **Falta 1.2** (revogar `anon`) — travada até saber quem pediu a migration `grant_anon_access_co…` no ERP |
 | 2 | `CLAUDE.md` | **CONCLUÍDO** | 2026-08-19 | commit `45c0397`; `tsc --noEmit` verde; cada afirmação conferida contra `App.tsx`, `client.ts`, `perfis.ts`, `scope.ts`, `acompanhamento.ts`, `pedidosVenda.ts` e `migration/*.sql` | inclui a ação corretiva AC3 (dependência do user mapping) e as 12 pendências conhecidas |
 | 3 | ESLint + CI | **CONCLUÍDO** | 2026-08-19 | commit `1a6a311`; 32 problemas encontrados e tratados; `lint` exit 0 com --max-warnings 0, `typecheck` exit 0, `build` 12,03s | 1 exceção documentada (react-refresh). Achado A3 registrado |
+| 3.6 | Visibilidade do corte (A5) | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `5ca1931`; typecheck, lint e build verdes | mitigação, não correção: os números seguem sobre recorte até a Etapa 7. `performance.ts` e `clientGroups.ts` ainda sem aviso |
 | 3.5 | Estados de erro (AC1) | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `abf4435`; typecheck, lint e build verdes | ressalva: verificação visual pendente — roteiro abaixo |
 | 4 | Sessão | PENDENTE | — | — | D1 aprovada (relogin sempre) |
 | 5 | Anti-força-bruta | PENDENTE | — | — | D2 aprovada; passo de painel é seu |
