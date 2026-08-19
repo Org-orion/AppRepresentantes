@@ -577,6 +577,18 @@ uma mudança que parecia certa, uma falha que ninguém viu por semanas.
 
 **Prioridade:** alta — quebra de uso diário, correção de uma linha, mas exige deploy (autorização).
 
+**Correção aplicada** em `2752398` (2026-08-19): rewrite restaurado para `"/(.*)"`. CSP, HSTS, os outros
+8 cabeçalhos e o `cleanUrls` seguem intactos. O apontamento do scanner **não** foi reintroduzido — ver
+motivo no commit.
+
+**Confirmado:** o projeto da Vercel está conectado a `https://github.com/Org-orion/AppRepresentantes`.
+O `git remote` local foi atualizado para essa URL (antes apontava para `ConcremPortas`, respondendo por
+redirecionamento).
+
+**Verificação — só um deploy prova.** A branch `chore/saneamento` gera **preview** na Vercel: abrir
+`<url-do-preview>/dashboard` e apertar F5. Se carregar, a correção está provada **na plataforma**, que é
+justamente o que faltou em `b271f33`. Só então promover para produção.
+
 ## Verificação visual pendente — Etapa 3.5
 
 Roteiro reproduzível, ~2 minutos, sem tocar em nada:
