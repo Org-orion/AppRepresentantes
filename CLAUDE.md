@@ -1,157 +1,303 @@
-# Concrem Connect — Portal do Representante
+# CLAUDE.md — Concrem Connect
 
-Portal web corporativo da Concrem Portas Premium para representantes gerenciarem orçamentos, pedidos e comissões.
+## Projeto
+
+**Concrem Connect** — Portal do Representante da **Concrem Portas Premium** (cliente).
+Desenvolvido pela **Nexus Labs**. Web (Vercel) + desktop (Tauri 2).
+
+## Objetivo
+
+Portal único para os representantes comerciais montarem orçamentos **sem preço**, acompanharem a
+análise/precificação da equipe comercial, seguirem os pedidos no pipeline de produção e entrega (dados
+vindos do ERP), consultarem a carteira de clientes e conferirem documentos fiscais e financeiros.
+
+## Perfil e risco
+
+**P3 · risco R2** — operação empresarial, multiusuário, dados pessoais e financeiros, permissões por
+papel. Ver [[Cérebro — Perfis e Classificação de Projetos]]. Consequência prática: mudanças exigem
+testes proporcionais, revisão de permissões e evidência antes de concluir.
+
+## Arquitetura
+
+Frontend SPA falando **direto com o Supabase** — não há backend HTTP próprio. Toda leitura e escrita passa
+por um **único client** (`src/lib/supabase/client.ts`), concentrada na camada de serviços `src/services/`.
+As "rotas de API" reais são **Edge Functions**.
+
+Os dados do ERP **não são copiados**: o banco do Portal os lê ao vivo do banco do ERP via `postgres_fdw`
+(schema local `erp`), expondo **views com RLS** em `public`. A segurança é garantida no banco (RLS), com o
+escopo replicado na camada de serviço (`src/services/scope.ts`) como defesa em profundidade.
 
 ## Stack
 
-- **Frontend:** React 19 + TypeScript + Vite
-- **UI:** Tailwind CSS v4, Radix UI, Lucide Icons, Recharts
-- **Estado:** TanStack React Query
-- **Roteamento:** React Router v7
-- **Backend:** Supabase (PostgreSQL)
-- **Auth:** RPC customizado (não usa Supabase Auth)
+- **Frontend:** React 19 + TypeScript 6 + Vite 8
+- **UI:** Tailwind CSS v4, Radix UI, Lucide, Recharts, framer-motion
+- **Estado de servidor:** TanStack React Query 5 (`staleTime` 5 min, `retry` 1)
+- **Rotas:** React Router v7 (`BrowserRouter`)
+- **Formulários:** react-hook-form + zod
+- **PDF:** `@react-pdf/renderer` · **Datas:** date-fns
+- **Backend:** Supabase (Auth, Postgres + RLS, Edge Functions, Storage)
+- **Anti-robô:** Cloudflare Turnstile
+- **Desktop:** Tauri 2 (`src-tauri/`, instalador NSIS)
 
-## Rodar localmente
+> **Classificação:** stack **LEGADA** frente ao padrão atual da Nexus Labs (HTML/CSS/JS+TS sem framework —
+> ver [[Cérebro — Padrão de Linguagem (HTML, CSS e JS)]]). Mantida por decisão de projeto; **não** serve de
+> referência para projeto novo.
 
-```bash
-npm install
-npm run dev
-```
-
-Variáveis de ambiente necessárias (`.env`):
-```
-VITE_SUPABASE_URL=
-VITE_SUPABASE_PUBLISHABLE_KEY=
-VITE_USE_MOCK=false
-```
-
-## Autenticação
-
-O sistema **não usa `supabase.auth.signIn`**. O login é feito via RPC customizado:
-
-```ts
-supabase.rpc('login', { p_email, p_senha })
-// retorna: { id, nome, email, admin, operador, rep_codes }
-```
-
-A sessão é persistida em `localStorage` com a chave `concrem_session`. Isso significa que **todas as queries chegam ao Supabase como usuário `anon`**. As tabelas `concremapprep_*` precisam ter RLS desabilitado ou policies liberando o role `anon`.
-
-## Tipos de usuário e permissões
-
-| Tipo | admin | operador | Acesso |
-|---|---|---|---|
-| Representante | false | false | Orçamentos, Pedidos, Acompanhamento, Clientes, Financeiro |
-| Operador | false | true | Aprovações, Pedidos, Dashboard |
-| Admin | true | qualquer | Tudo + Gestão de usuários e representantes |
-
-Guardas de rota em `src/App.tsx`: `AdminRoute`, `OperadorRoute`, `RepRoute`.
-
-## Estrutura de pastas
+## Estrutura
 
 ```
 src/
-├── pages/
-│   ├── admin/          # RepresentantesPage, UsuariosPage
-│   ├── LoginPage.tsx
-│   ├── DashboardPage.tsx
-│   ├── OrcamentosPage.tsx
-│   ├── NovoOrcamentoPage.tsx
-│   ├── EditarOrcamentoPage.tsx
-│   ├── PedidosPage.tsx
-│   ├── AcompanhamentoPage.tsx
-│   ├── AprovacoesPage.tsx
-│   ├── ClientesPage.tsx
-│   ├── FinanceiroPage.tsx
-│   └── PerfilPage.tsx
-├── services/           # Toda lógica de acesso ao Supabase
-├── hooks/              # Custom hooks com React Query
-├── contexts/           # AuthContext (sessão do usuário)
+├── pages/              # uma página por rota (+ admin/)
+├── services/           # TODO acesso ao Supabase mora aqui
+├── hooks/              # React Query por domínio
+├── contexts/           # AuthContext (sessão + perfil + rep codes + grupos)
 ├── components/
 │   ├── layout/         # Layout, Header, Sidebar, MobileNav
-│   └── ui/             # Card, Button, Input, StatusBadge
-├── types/index.ts
-└── utils/
-    ├── formatters.ts   # moeda, data
-    └── cn.ts           # Tailwind class merge
+│   ├── ui/             # base + família ui/cards/
+│   ├── dashboard/      # inclui executive/ (dashboards de diretor)
+│   ├── clientes/       # inclui groups/ (visão por grupo)
+│   └── login/
+├── alerts/             # motor de alertas (engine, registry, notify, sounds, prefs)
+├── pedidos/central.ts  # etapas e regras da Central de Pedidos
+├── utils/pipeline.ts   # pipeline de 9 estágios
+├── constants/perfis.ts # papéis
+└── types/index.ts
 ```
 
-## Banco de dados (Supabase)
+## Comandos reais
 
-### Tabelas do app (`concremapprep_*`)
+| Comando | O que faz |
+|---|---|
+| `npm run dev` | Vite dev server (porta 5173) |
+| `npm run build` | `tsc && vite build` |
+| `npm run preview` | Serve o build |
+| `npm run desktop:dev` / `desktop:build` | Tauri |
+| `npm run lint` | **QUEBRADO** — ver Pendências |
+
+Pré-requisito: `.env` a partir de `.env.example`.
+
+## Ambientes
+
+| Ambiente | Onde |
+|---|---|
+| Local | `npm run dev` |
+| Produção web | Vercel — https://representativesap.vercel.app |
+| Produção desktop | Instalador Tauri (NSIS) |
+| Banco do Portal | Supabase `ikjeyaxfciferyezxskh` ("apprepresentatives") — **plano FREE** |
+| Banco do ERP | Supabase `ctntlgvoefdbjxvfkahp` ("concrem") — PRO, compartilhado com outra aplicação |
+
+Variáveis (**só nomes, nunca valores**): `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`,
+`VITE_TURNSTILE_SITE_KEY`, `VITE_USE_MOCK`.
+Nas Edge Functions: `TURNSTILE_SECRET_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (runtime).
+
+## Banco e dados
+
+### Tabelas nativas do Portal
 
 | Tabela | Descrição |
 |---|---|
-| `concremapprep_usuarios` | Usuários do portal |
-| `concremapprep_representantes` | Representantes ERP cadastrados |
+| `concremapprep_usuarios` | Perfil do usuário; `id` = `auth.users(id)`. Coluna `perfil` é a fonte de verdade do papel |
+| `concremapprep_representantes` | Representantes do ERP cadastrados |
 | `concremapprep_usuario_representantes` | Vínculo N:N usuário ↔ representante |
-| `concremapprep_orcamentos` | Orçamentos criados no portal |
-| `concremapprep_orcamento_itens` | Itens dos orçamentos |
+| `concremapprep_orcamentos` / `_orcamento_itens` | Orçamentos e itens |
 | `concremapprep_notificacoes` | Notificações por usuário |
-| `clientes` | Clientes do representante (cadastro manual) |
-| `titulos` | Títulos financeiros dos clientes |
+| `client_groups` / `user_client_groups` | Grupos de cliente e vínculo com diretores |
 
-### Tabelas do ERP (somente leitura)
+### Views do ERP (leitura, via FDW + RLS)
 
-| Tabela | Descrição |
+`concrem_pedidos_venda` · `concrem_pedidos_status` · `concrem_pedidos_status_historico` ·
+`relatorio_entrega_anexos` · `concremprodutos_produtos`
+
+Cada uma é uma view `security_barrier` sobre uma foreign table do schema `erp`, filtrando por
+`app_is_admin()` ou `app_my_rep_codes()`.
+
+> ⚠️ **A tabela real de anexos no ERP chama-se `concrem_relatorio_entrega_anexos`.** No Portal ela é
+> exposta como `relatorio_entrega_anexos` — é o nome que o app usa.
+
+### 🔴 Dependência invisível: a senha do FDW
+
+A senha usada pelo FDW para entrar no ERP fica no **user mapping** do server `erp_test`, **dentro do banco
+do Portal**. Não está no código, nem em variável de ambiente, nem em tela nenhuma.
+
+**Rotacionar a senha do banco do ERP sem atualizar esse user mapping derruba, na mesma hora:** Pedidos,
+Acompanhamento, Central Financeira, Carteira de Clientes, dashboards de diretor e catálogo de produtos.
+Foi exatamente o que causou o incidente `docs/INCIDENTE-2026-08-19-FDW.md`.
+
+Ao rotacionar, execute sempre em seguida, **no banco do Portal**:
+
+```sql
+alter user mapping for postgres server erp_test options (set password $$…$$);
+```
+
+O usuário do mapping é `postgres.<ref-do-projeto-erp>` — formato exigido pelo pooler. **Não altere.**
+
+### Funções e RPCs
+
+| Nome | Uso |
 |---|---|
-| `concrem_pedidos_venda` | Pedidos do ERP |
-| `concrem_pedidos_status` | Status atual de cada pedido no pipeline |
-| `concrem_pedidos_status_historico` | Histórico de transições de status |
-| `relatorio_entrega_anexos` | Links para NF e boleto |
-| `concremprodutos_produtos` | Catálogo de produtos |
+| `gerar_numero_orcamento()` | Único RPC chamado pelo frontend |
+| `app_is_admin()` / `app_is_operador()` | Usadas dentro das policies |
+| `app_my_rep_codes()` | Rep codes do usuário logado; base do escopo nas views do ERP |
+| `app_can_*_orcamento()` | Autorização de orçamento nas policies |
 
-### RPCs
+Todas `security definer` com `set search_path = public`.
 
-| RPC | Parâmetros | Descrição |
+### Migrations
+
+Hoje espalhadas entre `migration/` (`schema_v2.sql`, `01`, `02`, `03_erp_fdw.sql`) e
+`src/lib/supabase/migration-diretores-grupos.sql`. Consolidação prevista — ver Pendências.
+
+> `src/lib/supabase/schema.sql` é **LEGADO** (modelo antigo, com `grant ... to anon`). **Não use como
+> referência.** Será removido.
+
+## Autenticação
+
+Usa **Supabase Auth** (`signInWithPassword`), com JWT por usuário e RLS no banco.
+
+- Sessão em **`sessionStorage`**: fechar a aba, abrir aba nova ou reabrir o app (inclusive no desktop)
+  **exige novo login**. Não existe "permanecer conectado". `F5` na mesma aba mantém a sessão.
+- `AuthContext` reage a `onAuthStateChange` e monta o usuário (perfil + rep codes + grupos).
+- ⚠️ **Nunca chame `supabase.from(...)` dentro do callback de `onAuthStateChange`** — o gotrue-js segura o
+  lock de auth ali e a query trava o app. Adie com `setTimeout(0)` (já implementado).
+- Turnstile no login, validado pela Edge Function `verificar-turnstile`.
+
+Ver [[Cérebro — Autenticação e Sessões]].
+
+## Permissões
+
+Cinco perfis, definidos pela coluna `perfil` (fallback nos flags `admin`/`operador` — ver
+`src/constants/perfis.ts`):
+
+| Perfil | Escopo de dados | Acesso |
 |---|---|---|
-| `login` | `p_email, p_senha` | Autentica e retorna dados do usuário + rep_codes |
-| `criar_usuario` | `p_nome, p_email, p_senha, p_admin` | Cria usuário com senha hash. O campo `operador` é setado após via UPDATE separado |
-| `alterar_senha` | `p_id uuid, p_senha text` | Atualiza senha do usuário (parâmetro era `p_usuario_id` na versão anterior — usar DROP antes de recriar) |
-| `gerar_numero_orcamento` | — | Gera número sequencial de orçamento |
+| `representante` | próprios rep codes | operacional, sem gestão |
+| `operador` | rep codes (hoje: sem vínculo = 0 pedidos) | Aprovações, Pedidos, Dashboard |
+| `admin` | global | tudo, incluindo gestão |
+| `diretor` | grupos de cliente vinculados | leitura; não aprova, não cria orçamento |
+| `diretor_geral` | global | tudo, exceto gestão de usuários/representantes/grupos |
 
-## Vínculo usuário ↔ representante ERP
+Guardas em `src/App.tsx`: `AdminRoute` (só `admin`) · `OperadorRoute` (`isGlobal` ou `operador`) ·
+`RepRoute` (bloqueia operador puro) · `OrcEditorRoute` (bloqueia operador e diretor).
 
-O campo `concremapprep_representantes.representante_erp` deve ser **idêntico** ao campo `concrem_pedidos_venda.representante` vindo do ERP. É esse match que filtra os pedidos do representante. Se estiver diferente, o representante não vê nenhum dado.
+**A guarda de rota é UX, não segurança.** Quem garante é a RLS. Escopo central em
+`src/services/scope.ts` (`getUserDataScope`) — toda leitura sensível deve derivar dali.
 
-## Pipeline de pedidos
+Ver [[Cérebro — Configurações e Permissões]].
 
-Estágios em ordem: `aprovado → liberado → mapeamento → ferragem → comercial → producao → faturado → entrega → finalizado`
+## Regras de domínio
 
-Mapeamento de status do banco para o app (em `src/services/acompanhamento.ts`):
+**Vínculo com o ERP:** `concremapprep_representantes.representante_erp` precisa ser **idêntico** ao
+`concrem_pedidos_venda.representante`. Divergência = representante sem dados (erro de cadastro, não de código).
 
-```
-aguardando_avaliacao  → aprovado
-(sem mapeamento)      → liberado   ← estágio existe na UI mas sem status DB definido
-mapeamento_concluido  → mapeamento
-ferragem_recebida     → ferragem
-liberado_comercial    → comercial
-liberado_producao     → producao
-faturado              → faturado
-em_entrega            → entrega
-entregue / finalizado → finalizado
-```
+**Pipeline (9 estágios):** `aprovado → liberado → mapeamento → ferragem → comercial → producao → faturado
+→ entrega → finalizado`. Mapeamento DB → app em `src/services/acompanhamento.ts` (`STATUS_MAP`). Pedido sem
+status entra como `aprovado`. **`liberado` existe na UI mas nenhum status do banco mapeia para ele.**
 
-Pedidos sem status em `concrem_pedidos_status` são tratados como `aprovado` (entrada padrão no pipeline).
+**Status de orçamento:** `rascunho → enviado → em_analise → aprovado | rejeitado`. Só `rascunho` pode ser
+editado ou excluído pelo representante.
 
-## Status dos orçamentos
+**Paginação:** `PAGE_SIZE = 50`; a Central de Pedidos carrega até `CENTRAL_CAP = 1500` (sinaliza
+`truncated`). Consultas de status em lotes de 200 para não estourar o limite de URL do PostgREST.
 
-`rascunho → enviado → em_analise → aprovado / rejeitado`
+**Vendas diretas fora da listagem:** `REP_EXCLUIDOS = ['40001498 - JANDERSON LEROY MERLIN']`
+(`src/services/pedidosVenda.ts`).
 
-Apenas orçamentos em `rascunho` podem ser editados ou excluídos pelo representante.
+**Modo mock:** `VITE_USE_MOCK=true` bypassa o Supabase com `src/data/mockData.ts`.
 
-## Paginação de pedidos
+## Edge Functions
 
-`PAGE_SIZE = 50` definido em `src/services/pedidosVenda.ts`. Queries são feitas em lotes de 200 para evitar limite de URL do PostgREST ao buscar status.
+| Função | Chamada por | Papel |
+|---|---|---|
+| `verificar-turnstile` | `LoginPage.tsx` | valida o token do Turnstile |
+| `admin-criar-usuario` | `services/usuarios.ts` | cria usuário com `service_role` |
+| `admin-reset-senha` | `services/usuarios.ts` | redefine senha com `service_role` |
 
-## Representante excluído dos filtros
+Deployadas com **Verify JWT desligado** — a validação de admin é feita **dentro do código da função**.
+Essa checagem **nunca** pode ser removida.
 
-```ts
-// src/services/pedidosVenda.ts
-const REP_EXCLUIDOS = ['40001498 - JANDERSON LEROY MERLIN']
-```
+## Testes
 
-Vendas diretas (Leroy Merlin) são excluídas da listagem dos representantes.
+**Não existe suíte automatizada** — pendência aberta. Enquanto não houver, toda mudança relevante precisa
+de roteiro de verificação manual reproduzível (passos, esperado, obtido, evidência). "Testado manualmente"
+sozinho **não** é evidência. Ver [[Cérebro — Testes e Verificação]].
 
-## Modo mock
+## Segurança
 
-`VITE_USE_MOCK=true` bypassa o Supabase e usa dados simulados de `src/data/mockData.ts`. Útil para desenvolvimento sem conexão com o banco.
+- Anon key vai no bundle **por design** — quem protege é a RLS. Nunca "desligue a RLS para facilitar".
+- `service_role` **só** dentro de Edge Function. Nunca no frontend.
+- CSP e headers em `vercel.json`. O shell Tauri tem `csp: null` — não herda essa proteção.
+- Segredos **só por nome** em qualquer documento. `.env` não é versionado.
+
+Ver [[Cérebro — Segurança]].
+
+## Deploy
+
+Vercel a partir do repositório. Não há pipeline de CI (pendência). Deploy e alteração de banco em produção
+**exigem autorização explícita**.
+
+## Documentação relacionada
+
+- **Cérebro de engenharia:** `C:\obsidian\kmz\Aplicações\Cérebro\Cérebro — Índice.md` — comece pelo Índice
+  e carregue **só** o pilar aplicável.
+- **Nota-mãe:** `C:\obsidian\kmz\Aplicações\AppRepresentantes - Concrem Connect.md`
+- **Notas de tela:** `C:\obsidian\kmz\Aplicações\Telas - AppRepresentantes\`
+- **No repositório:** `docs/PLANO-SANEAMENTO.md` · `docs/INCIDENTE-2026-08-19-FDW.md` · `SEGURANCA.md` ·
+  `migration/RESUMO.md`
+
+> **Autoridade:** este arquivo é o **contexto local do projeto** (nível 5 da
+> [[Cérebro — Hierarquia de Autoridade]]). Segurança, proteção de dados e as regras inegociáveis da Nexus
+> Labs estão **acima** dele. Em conflito, aplique a regra superior e **explique a divergência** — não
+> descarte nenhuma das duas em silêncio.
+
+## 📓 Sincronização com o Obsidian (OBRIGATÓRIO)
+
+Sempre que houver alteração relevante (nova tela ou rota, funcionalidade, regra de negócio, mudança de
+stack/escopo/status, remoção de recurso), **atualize a documentação no cofre**:
+
+- **Nota-mãe** (`tipo: projeto`): propósito, stack, banco, segurança, como rodar, riscos e o índice
+  `### 3.1 Páginas`.
+- **Uma nota por tela** (`tipo: pagina`) em `Telas - AppRepresentantes/`, no método módulo/página:
+  `# Tela: <Nome>`, seta de volta `← [[AppRepresentantes - Concrem Connect]]`, e as seções `## Arquivos`,
+  `## O que a tela faz`, `## Fluxo`, `## Observações`.
+
+Regras: escreva em **português**; **não** cole código na nota; segredos **só por nome** de variável; não
+invente dados (marque `A definir` / `NÃO VERIFICADO`); ao criar tela nova, crie a nota dela e adicione o
+link no `### 3.1 Páginas`. Ao encerrar a tarefa, diga no resumo se a documentação foi atualizada — ou que
+não havia mudança relevante a documentar.
+
+## Ações que exigem autorização
+
+Commit, push, PR, merge · qualquer migration ou alteração no banco remoto · rotação de segredo · deploy ·
+alteração de configuração no painel do Supabase, Vercel ou Cloudflare · exclusão de dados · comunicação
+externa.
+
+## Ações proibidas
+
+Expor segredo (inclusive em log ou commit) · desabilitar RLS · usar `service_role` no frontend · remover a
+validação de admin das Edge Functions · alterar a opção `user` do user mapping do FDW · apresentar mudança
+não verificada como concluída · sobrescrever trabalho não commitado de outra pessoa.
+
+## Definition of Done
+
+Ver [[Cérebro — Definition of Done]]. Mínimo neste projeto: comportamento entregue · `tsc` e `build` verdes ·
+verificação proporcional ao risco **com evidência** · permissões conferidas quando a mudança tocar dados ·
+documentação do Obsidian avaliada · limitações e riscos residuais declarados · estado final classificado.
+
+## Pendências conhecidas
+
+Rastreadas em `docs/PLANO-SANEAMENTO.md`:
+
+1. `npm run lint` quebrado — ESLint não instalado e sem `eslint.config.js`.
+2. Nenhum teste automatizado e nenhum CI.
+3. Telas sem estado de erro: falha de backend aparece como "nenhum resultado" (causou a detecção tardia do
+   incidente de 2026-08-19).
+4. Turnstile validado só no caminho da UI — `signInWithPassword` continua chamável direto.
+5. "Conferido" da Central Financeira em `localStorage` sem chave por usuário (vaza entre usuários na mesma
+   máquina).
+6. Coluna `telefone` de `concremapprep_usuarios` sem migration versionada.
+7. Migrations espalhadas em dois diretórios; `schema.sql` legado ainda no repositório.
+8. Código morto: `services/{clientes,titulos,pedidos}.ts` + hooks correspondentes e 7 componentes órfãos.
+9. Bundle único de ~3,3 MB, sem code-splitting por rota.
+10. Sem observabilidade: nenhum registro de evento crítico, nenhum alerta.
+11. Banco do Portal em **plano FREE** — pausa por inatividade e retenção de backup limitada, em produção.
+12. `anon` ainda com `select` em tabelas do banco do ERP.
