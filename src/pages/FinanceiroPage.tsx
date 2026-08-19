@@ -5,6 +5,7 @@ import Select from '@/components/ui/Select';
 import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
 import PageContainer from '@/components/ui/PageContainer';
+import DataError from '@/components/ui/DataError';
 import {
   FileText, Receipt, Download, Paperclip, X, Check, AlertTriangle, SlidersHorizontal,
   List, LayoutGrid, Activity, ChevronRight, CheckCircle2, CircleDashed, Sparkles,
@@ -467,7 +468,7 @@ function DocDrawer({ pedido, onClose, onToast, conferido, onConferir }: {
 // ─── Página ──────────────────────────────────────────────
 export default function FinanceiroPage() {
   const hoje = useMemo(() => new Date(), []);
-  const { data: pedidos = [], isLoading } = useFinanceiro();
+  const { data: pedidos = [], isLoading, isError, refetch } = useFinanceiro();
   const reduce = useReducedMotion();
 
   const [view, setView] = useState<ViewMode>(() => {
@@ -603,6 +604,19 @@ export default function FinanceiroPage() {
     { key: 'table', icon: List, label: 'Tabela' },
     { key: 'timeline', icon: Activity, label: 'Recentes' },
   ];
+
+  // Falha de carga tem tela própria: sem isto, "sem documentos" e "sistema fora"
+  // ficam indistinguíveis (ver docs/INCIDENTE-2026-08-19-FDW.md).
+  if (isError) {
+    return (
+      <PageContainer>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Central Financeira</h1>
+        </div>
+        <DataError recurso="os documentos fiscais" onRetry={() => refetch()} />
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>

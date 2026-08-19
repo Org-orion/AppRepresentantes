@@ -5,6 +5,7 @@ import Select from '@/components/ui/Select';
 import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
 import PageContainer from '@/components/ui/PageContainer';
+import DataError from '@/components/ui/DataError';
 import MobileBottomSheet from '@/components/ui/MobileBottomSheet';
 import {
   CheckCircle2, Unlock, Map as MapIcon, Wrench, Handshake, Factory, FileCheck2, Truck,
@@ -508,7 +509,7 @@ const PAGE = 24;
 export default function AcompanhamentoPage() {
   const hoje = useMemo(() => new Date(), []);
   const reduce = useReducedMotion();
-  const { data: pedidosRaw = [], isLoading, isError, error } = useAcompanhamento();
+  const { data: pedidosRaw = [], isLoading, isError, error, refetch } = useAcompanhamento();
 
   const [view, setView] = useState<ViewMode>(() => {
     const s = localStorage.getItem('acomp_view');
@@ -626,14 +627,20 @@ export default function AcompanhamentoPage() {
     { key: 'timeline', icon: Activity, label: 'Timeline' },
   ];
 
+  // Havia um bloco aqui que despejava a mensagem crua do Postgres na tela — no
+  // incidente de 2026-08-19 isso teria mostrado host, usuário do banco e motivo
+  // da falha de autenticação para o representante. Detalhe técnico não é assunto
+  // do usuário final; vai para o console e, quando houver auditoria (Etapa 11),
+  // para o registro de eventos.
   if (isError) {
+    if (import.meta.env.DEV) console.error('[Acompanhamento] falha ao carregar pedidos:', error);
     return (
-      <div className="p-5">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-sm font-semibold text-red-700">Erro ao carregar pedidos</p>
-          <p className="text-xs text-red-500 mt-1 font-mono break-all">{error instanceof Error ? error.message : JSON.stringify(error)}</p>
+      <PageContainer>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Central de Acompanhamento</h1>
         </div>
-      </div>
+        <DataError recurso="os pedidos em acompanhamento" onRetry={() => refetch()} />
+      </PageContainer>
     );
   }
 

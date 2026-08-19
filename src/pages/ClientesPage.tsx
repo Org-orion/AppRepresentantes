@@ -4,6 +4,7 @@ import { formatCurrency, formatDate, parseContatos } from '@/utils/formatters';
 import SearchInput from '@/components/ui/SearchInput';
 import Select from '@/components/ui/Select';
 import PageContainer from '@/components/ui/PageContainer';
+import DataError from '@/components/ui/DataError';
 import { cn } from '@/utils/cn';
 import { MetricCard } from '@/components/ui/cards';
 import { useSearchParams } from 'react-router-dom';
@@ -795,7 +796,7 @@ export default function ClientesPage() {
     setSearchParams(p);   // push — permite voltar entre Clientes e Grupos
   }
 
-  const { data: clientes = [], isLoading } = useCarteira();
+  const { data: clientes = [], isLoading, isError, refetch } = useCarteira();
 
   // Deep-link vindo de uma notificação de recompra: /clientes?cnpj=... abre o cliente.
   const cnpjParam = searchParams.get('cnpj');
@@ -846,6 +847,11 @@ export default function ClientesPage() {
 
       {view === 'grupos' ? (
         <ClientGroupsView />
+      ) : isError ? (
+        // A carteira é derivada dos pedidos do ERP. Se a consulta falha, a lista
+        // vazia mentiria: diria "sem clientes" quando o certo é "não deu para
+        // consultar" (ver docs/INCIDENTE-2026-08-19-FDW.md).
+        <DataError recurso="a carteira de clientes" onRetry={() => refetch()} />
       ) : (
       <div className="flex gap-4 items-start">
 

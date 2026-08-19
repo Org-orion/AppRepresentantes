@@ -7,6 +7,7 @@ import Select from '@/components/ui/Select';
 import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
 import PageContainer from '@/components/ui/PageContainer';
+import DataError from '@/components/ui/DataError';
 import {
   AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -520,7 +521,7 @@ export default function PedidosPage() {
   const [showCharts, setShowCharts] = useState(false);
   const [selected, setSelected] = useState<PedidoVenda | null>(null);
 
-  const { data: result, isLoading, isFetching } = usePedidosCompleto({
+  const { data: result, isLoading, isFetching, isError, refetch } = usePedidosCompleto({
     search: search || undefined,
     cliente: cliente || undefined,
     representante: representante || undefined,
@@ -650,6 +651,19 @@ export default function PedidosPage() {
     { key: 'table', icon: List, label: 'Tabela' },
     { key: 'pipeline', icon: SquareKanban, label: 'Kanban' },
   ];
+
+  // Falha de carga tem tela própria: cair no estado vazio faria a queda parecer
+  // ausência de pedidos (ver docs/INCIDENTE-2026-08-19-FDW.md).
+  if (isError) {
+    return (
+      <PageContainer>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Central de Pedidos</h1>
+        </div>
+        <DataError recurso="os pedidos" onRetry={() => refetch()} />
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>

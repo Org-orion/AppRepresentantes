@@ -605,9 +605,17 @@ export default function DashboardPage() {
   const [pipelineAberto, setPipelineAberto] = useState(false);
   const detalhado = modo === 'detalhado';
 
-  const { data: stats, isLoading: loading } = useDashboardStats({ periodo, ano, mes, trimestre, representante: repFiltro });
+  const { data: stats, isLoading: loading, isError: statsErro, refetch: recarregarStats } =
+    useDashboardStats({ periodo, ano, mes, trimestre, representante: repFiltro });
   const { data: orcamentosAll = [] } = useOrcamentos();
-  const { data: clientes = [] } = useCarteira(isAdmin ? repFiltro : undefined);
+  const { data: clientes = [], isError: carteiraErro, refetch: recarregarCarteira } =
+    useCarteira(isAdmin ? repFiltro : undefined);
+
+  // O dashboard mistura fonte nativa (orçamentos) com fonte do ERP (stats e
+  // carteira). Se a parte do ERP falha, os KPIs continuam renderizando — em
+  // zero. Zero aqui é indistinguível de "não vendeu nada", e é sobre esse número
+  // que um diretor decide. Por isso o aviso é explícito em vez de silencioso.
+  const dadosIncompletos = statsErro || carteiraErro;
   const { data: representantes = [] } = useRepresentantesUnicos();
 
   const orcamentos = (isAdmin && repFiltro !== 'todos')
@@ -739,6 +747,27 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Olá, {nome} 👋</h1>
         <p className="text-sm text-gray-500 mt-1 capitalize">Portal do Representante · {formatDateLong(today)}</p>
       </div>
+
+      {/* ── Aviso de dados incompletos ── */}
+      {dadosIncompletos && (
+        <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-amber-900">Alguns dados não puderam ser carregados</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Os números abaixo estão incompletos e <strong>não representam o resultado real</strong>.
+              Não tome decisão por eles até recarregar.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { if (statsErro) recarregarStats(); if (carteiraErro) recarregarCarteira(); }}
+            className="flex-shrink-0 rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
 
       {/* ── Filtros ── */}
       <div className="flex flex-wrap items-center gap-2">
