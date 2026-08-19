@@ -537,6 +537,46 @@ login, com sessão boa no bolso.
 com "tentar novamente" (mesmo padrão do `DataError`) e só derrubar a sessão quando o Supabase Auth
 disser que ela acabou. Entra como **Etapa 4.1**, junto do resto de autenticação.
 
+### A7 — 404 em produção ao recarregar qualquer rota (desde 2026-07-07)
+
+**Sintoma reproduzido:** `https://representativesap.vercel.app/dashboard` recarregado direto devolve a
+página **404 NOT_FOUND da Vercel**. Vale para qualquer rota interna. Navegar por dentro do app funciona,
+porque aí quem resolve é o roteador no cliente — o servidor nunca é consultado.
+
+**Quem sofre:** todo mundo que aperta F5, usa um favorito, abre um link compartilhado ou volta ao app
+pela URL. O app parece fora do ar.
+
+**Causa (identificada no histórico):** o commit `b271f33` (2026-07-07, "404 real para caminhos falsos de
+log — validação pós-scanner") trocou o rewrite de SPA:
+
+```diff
+- { "source": "/(.*)",                             "destination": "/index.html" }
++ { "source": "/((?!.*\.log$|logs$|log$).*)",   "destination": "/index.html" }
+```
+
+A intenção era fazer `/logs`, `/log` e `*.log` caírem no 404 nativo para satisfazer um apontamento de
+scanner. O efeito real foi o padrão **deixar de casar com qualquer coisa** na Vercel, então **nenhuma**
+rota é reescrita e todas caem no 404. O `source` da Vercel é *path-to-regexp*, não regex livre.
+
+**Detalhe que fecha a lição:** a própria mensagem do commit diz "comportamento validado por **simulação**
+do path-to-regexp". Foi validado contra um modelo, não contra a plataforma. É a mesma família do A2 —
+uma mudança que parecia certa, uma falha que ninguém viu por semanas.
+
+**Está em produção há ~6 semanas.**
+
+**Correção proposta:**
+
+1. Restaurar `"/(.*)"`, que comprovadamente funcionava (`29ad1d2` existe justamente para isso).
+2. Sobre o apontamento do scanner: uma SPA devolver `index.html` para caminho desconhecido **não é
+   vulnerabilidade** — é como SPA funciona. Trocar o app inteiro por um item cosmético de relatório foi
+   um mau negócio. Se ainda assim for exigido, tratar com uma regra específica **antes** do catch-all e
+   **validar num preview da Vercel**, nunca por simulação.
+3. Confirmar para onde o projeto da Vercel aponta: o repositório mudou de `ConcremPortas` para
+   `Org-orion` e o push responde com aviso de redirecionamento. Se a conexão do deploy ficou na origem
+   antiga, correção nenhuma chega em produção.
+
+**Prioridade:** alta — quebra de uso diário, correção de uma linha, mas exige deploy (autorização).
+
 ## Verificação visual pendente — Etapa 3.5
 
 Roteiro reproduzível, ~2 minutos, sem tocar em nada:
