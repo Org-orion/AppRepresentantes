@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { motion, useReducedMotion, type Variants } from 'framer-motion';
 import { Turnstile } from 'react-turnstile';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase, setSessionPersistence, getSessionPersistence } from '@/lib/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import CinematicBackdrop from '@/components/login/CinematicBackdrop';
 import LoginField, { loginItemVariants } from '@/components/login/LoginField';
@@ -22,7 +22,6 @@ export default function LoginPage() {
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileError, setTurnstileError] = useState<string | null>(null);
   const [turnstileKey, setTurnstileKey] = useState(0);
-  const [remember, setRemember] = useState(() => getSessionPersistence());
   const reduce = !!useReducedMotion();
 
   // "Reseta" o Turnstile remontando o widget (via key) — o react-turnstile cuida
@@ -51,10 +50,6 @@ export default function LoginPage() {
       resetTurnstile();
       return;
     }
-
-    // Define ONDE a sessão será guardada antes do sign-in do Supabase:
-    // marcado → localStorage (persiste); desmarcado → sessionStorage (encerra ao fechar).
-    setSessionPersistence(remember);
 
     await login({ email, password });
     resetTurnstile();
@@ -190,20 +185,6 @@ export default function LoginPage() {
                   </button>
                 }
               />
-
-              <motion.label
-                variants={loginItemVariants}
-                className="flex items-center gap-2.5 cursor-pointer select-none pt-0.5"
-              >
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={e => setRemember(e.target.checked)}
-                  disabled={loading}
-                  className="h-4 w-4 rounded border-white/20 bg-white/5 accent-emerald-500 cursor-pointer"
-                />
-                <span className="text-sm text-white/60">Permanecer conectado</span>
-              </motion.label>
 
               {turnstileError && (
                 <motion.div
