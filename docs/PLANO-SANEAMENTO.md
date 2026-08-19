@@ -478,12 +478,27 @@ produção olhando esses números.
 | `dashboard.ts:102` | KPIs do Dashboard, pipeline, insights, tendência |
 | `financeiro.ts:55` e `:152` | Central Financeira e anexos |
 
-**PENDENTE DE EVIDÊNCIA:** se o teto do projeto for mesmo `db-max-rows = 1000`, então os `.limit()`
-explícitos maiores **também** são cortados — `carteira.ts` (5.000), `performance.ts` (50.000),
-`clientGroups.ts` (50.000) e `pedidosVenda.ts` (`CENTRAL_CAP` 1.500). Nesse caso a Central de Pedidos
-exibe "exibindo os 1.500 mais recentes" enquanto recebeu 1.000, e praticamente **todo agregado do app**
-está calculado sobre 1.000 de 7.600 registros. Confirmar pelo `Content-Range` de uma consulta com
-`limit` explícito.
+**CONFIRMADO (2026-08-19):** o painel do Supabase mostra **Max rows = 1000** em
+*Integrations → Data API → Settings*. O teto é **global** e corta **toda** consulta, inclusive as que
+pedem mais. Logo, **todos** estes `limit` são ficção:
+
+| Onde | Pede | Recebe | Consequência |
+|---|---|---|---|
+| `acompanhamento.ts:72` | sem limit | 1.000 | KPIs de parados/atraso/docs sobre recorte |
+| `dashboard.ts:102` | sem limit | 1.000 | KPIs, pipeline, insights e tendência |
+| `financeiro.ts:55,152` | sem limit | 1.000 | documentos fiscais |
+| `carteira.ts:47` | 5.000 | 1.000 | "462 clientes ativos" sai de 1.000 pedidos |
+| `pedidosVenda.ts:189` | 1.500 | 1.000 | a tela **afirma** "exibindo os 1.500 mais recentes" |
+| `performance.ts:37,129` | 50.000 | 1.000 | ranking de representantes |
+| `clientGroups.ts:11,62` | 50.000 | 1.000 | análise por grupo de cliente |
+
+O total de 7.600 exibido na Central de Pedidos está correto — vem de `count: 'exact'`, que não sofre o
+teto. É só a **lista e os agregados derivados dela** que vêm truncados. Isso torna o erro mais difícil
+de perceber: o total certo ao lado de números derivados errados.
+
+**Viés do recorte:** a ordenação é `data_emissao desc`, então o que fica de fora é sempre **o mais
+antigo** — exatamente onde se concentram os pedidos parados e atrasados. O corte não é neutro:
+subestima sistematicamente os indicadores de problema.
 
 Contraria [[Cérebro — Acessibilidade, UX e Padrões de Interface]] e o princípio de **não truncar em
 silêncio**: se um recorte é aplicado, a tela precisa dizer — como a Central de Pedidos já faz com
