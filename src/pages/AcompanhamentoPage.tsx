@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { formatCurrency, formatCurrencyK } from '@/utils/formatters';
+import { formatCurrencyK } from '@/utils/formatters';
 import Select from '@/components/ui/Select';
 import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
@@ -139,37 +139,6 @@ function DocBadges({ pedido }: { pedido: PedidoAcompanhamento }) {
       <DocBadge ok={temNF(pedido)} label="NF" />
       <DocBadge ok={temBoleto(pedido)} label="Boleto" />
     </div>
-  );
-}
-
-// ─── Timeline compacta (horizontal no desktop / vertical no mobile) ──
-function MiniPipeline({ status }: { status: PedidoStatus }) {
-  const idx = STEP_INDEX[status];
-  return (
-    <>
-      {/* Desktop: horizontal, elegante */}
-      <div className="hidden sm:flex items-center gap-1">
-        {STEPS.map((s, i) => {
-          const done = i < idx; const atual = i === idx;
-          return (
-            <div key={s.key} className="flex items-center flex-1 min-w-0">
-              <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
-                style={{ backgroundColor: (done || atual) ? s.color : '#e5e7eb' }} title={s.label}>
-                {done ? <Check className="w-2 h-2 text-white" /> : atual ? <span className="w-1.5 h-1.5 rounded-full bg-white" /> : null}
-              </div>
-              {i < STEPS.length - 1 && <div className="h-0.5 flex-1 rounded-full" style={{ backgroundColor: i < idx ? s.color : '#e5e7eb' }} />}
-            </div>
-          );
-        })}
-      </div>
-      {/* Mobile: barra de progresso proporcional + rótulos */}
-      <div className="sm:hidden">
-        <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${((idx + 1) / STEPS.length) * 100}%`, backgroundColor: STEP_META[status].color }} />
-        </div>
-        <p className="text-[10px] text-gray-400 mt-1">Etapa {idx + 1} de {STEPS.length}</p>
-      </div>
-    </>
   );
 }
 
@@ -565,7 +534,7 @@ export default function AcompanhamentoPage() {
 
   const reps = useMemo(() => [...new Set(pedidos.map(p => p.representante).filter(Boolean) as string[])].sort(), [pedidos]);
 
-  function matchQuick(p: PedidoAcompanhamento): boolean {
+  const matchQuick = useCallback((p: PedidoAcompanhamento): boolean => {
     for (const q of quick) {
       if (q === 'atrasado' && !emAtraso(p, hoje)) return false;
       if (q === 'parado' && !parado(p, hoje)) return false;
@@ -577,7 +546,7 @@ export default function AcompanhamentoPage() {
       if (q === 'boleto_pend' && !(faturadoOuAlem(p) && !temBoleto(p))) return false;
     }
     return true;
-  }
+  }, [quick, hoje]);
 
   const filtrados = useMemo(() => {
     let list = pedidos;
@@ -588,7 +557,7 @@ export default function AcompanhamentoPage() {
       list = list.filter(p => p.numero_pedido.toLowerCase().includes(q) || p.cliente_nome.toLowerCase().includes(q) || (p.cliente_fantasia ?? '').toLowerCase().includes(q) || p.cliente_cnpj.includes(q));
     }
     return list.filter(matchQuick);
-  }, [pedidos, statusFiltro, representante, search, quick, hoje]);
+  }, [pedidos, statusFiltro, representante, search, matchQuick]);
 
   useEffect(() => { setPage(1); }, [statusFiltro, representante, search, quick, view]);
 
@@ -639,7 +608,7 @@ export default function AcompanhamentoPage() {
 
   const hasFilters = !!(search || statusFiltro || representante || quick.size > 0);
   function clearFilters() { setSearch(''); setStatusFiltro(''); setRepresentante(''); setQuick(new Set()); }
-  function toggleQuick(k: QuickKey) { setQuick(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; }); }
+  function toggleQuick(k: QuickKey) { setQuick(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; }); }
 
   const QUICK_DEFS: { key: QuickKey; label: string }[] = [
     { key: 'atrasado', label: 'Atrasados' },

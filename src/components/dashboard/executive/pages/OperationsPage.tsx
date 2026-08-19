@@ -75,7 +75,7 @@ function OrcamentosPanel({ period }: { period: ExecutivePeriod }) {
   const c = useMemo(() => {
     const { ini, fim } = periodoRange(period);
     const orcs = allOrcs.filter(o => { const d = (o.created_at || '').slice(0, 10); return d >= ini && d <= fim; });
-    let criados = orcs.length, aprovados = 0, rejeitados = 0, analise = 0, parados = 0;
+    const criados = orcs.length; let aprovados = 0, rejeitados = 0, analise = 0, parados = 0;
     for (const o of orcs) {
       if (o.status === 'aprovado') aprovados++;
       else if (o.status === 'rejeitado') rejeitados++;

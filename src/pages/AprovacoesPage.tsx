@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { formatDate, formatCurrency, formatCurrencyK } from '@/utils/formatters';
 import Avatar from '@/components/ui/Avatar';
 import { FilterBar, FilterChip } from '@/components/ui/FilterBar';

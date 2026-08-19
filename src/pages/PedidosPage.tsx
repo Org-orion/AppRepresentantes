@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
@@ -531,7 +531,9 @@ export default function PedidosPage() {
   const { data: repsUnicos = [] } = useRepresentantesUnicos();
   const { data: situacoes = [] } = useSituacoesEntrega();
 
-  const base = result?.data ?? [];
+  // Memoizado: `result?.data ?? []` criava um array novo a cada render, o que
+  // invalidava todos os useMemo que dependem de `base` sem nada ter mudado.
+  const base = useMemo(() => result?.data ?? [], [result]);
 
   // Threshold de "alto valor" = percentil 80 do conjunto
   const altoValorThreshold = useMemo(() => {
@@ -540,7 +542,7 @@ export default function PedidosPage() {
     return vals[Math.floor(vals.length * 0.8)] ?? vals[vals.length - 1];
   }, [base]);
 
-  function matchQuick(p: PedidoVenda): boolean {
+  const matchQuick = useCallback((p: PedidoVenda): boolean => {
     for (const q of quick) {
       const et = etapaDe(p);
       if (q === 'faturado' && et !== 'faturado') return false;
@@ -554,9 +556,9 @@ export default function PedidosPage() {
       if (q === 'atraso' && !emAtraso(p, hoje)) return false;
     }
     return true;
-  }
+  }, [quick, altoValorThreshold, hoje]);
 
-  const filtrados = useMemo(() => base.filter(matchQuick), [base, quick, altoValorThreshold, hoje]);
+  const filtrados = useMemo(() => base.filter(matchQuick), [base, matchQuick]);
 
   useEffect(() => { setPage(1); }, [quick, search, cliente, ano, mes, representante, situacao]);
 
@@ -628,7 +630,7 @@ export default function PedidosPage() {
     setAno(''); setMes(''); setRepresentante(''); setSituacao(''); setQuick(new Set());
   }
   function toggleQuick(k: QuickKey) {
-    setQuick(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+    setQuick(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   }
 
   const QUICK_DEFS: { key: QuickKey; label: string }[] = [

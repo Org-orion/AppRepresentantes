@@ -25,7 +25,7 @@ export default function PanoramaGlobal({ period }: { period?: DashboardFiltros }
   const { data: reps = [] } = useRepPerformance(period);
   const { data: grupos = [], isLoading } = useGroupPerformance(period);
 
-  const { receita, pedidos, ticket, top3, resto, top3List } = useMemo(() => {
+  const { receita, ticket, top3, resto, top3List } = useMemo(() => {
     const receita = grupos.reduce((s, g) => s + g.receita, 0);
     const pedidos = grupos.reduce((s, g) => s + g.pedidos, 0);
     const ordenados = [...grupos].sort((a, b) => b.receita - a.receita);

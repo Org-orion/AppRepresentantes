@@ -22,7 +22,7 @@ import {
   ArrowRight, ArrowUpRight, TrendingUp, TrendingDown,
   Unlock, Map as MapIcon, Wrench, Handshake, Factory, FileCheck2, Truck, PackageCheck,
   ChevronDown, ChevronLeft, ChevronRight, LayoutList, Layers, CalendarDays, CalendarClock, X,
-  Sparkles, Lightbulb, Target, Trophy, Activity,
+  Sparkles, Lightbulb, Target, Trophy,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Link } from 'react-router-dom';

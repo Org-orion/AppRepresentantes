@@ -1,4 +1,4 @@
-import { Document, Page, View, Text, Image, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer';
 import type { Orcamento, OrcamentoItem } from '@/types';
 
 // URL absoluta para o logo (funciona no pdf renderer)

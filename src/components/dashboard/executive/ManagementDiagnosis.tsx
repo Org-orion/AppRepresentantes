@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Activity, TrendingUp, AlertTriangle, GitBranch, Lightbulb } from 'lucide-react';
+import { Activity, TrendingUp, AlertTriangle, GitBranch } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { useExecutiveSummary, type ExecutivePeriod } from '@/hooks/useExecutiveSummary';
 import { useGroupPerformance } from '@/hooks/useRepPerformance';

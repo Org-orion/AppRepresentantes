@@ -1,0 +1,54 @@
+name: CI
+
+# Portão de qualidade: nada entra em main sem passar por typecheck, lint e build.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Menor privilégio possível — o workflow só precisa ler o repositório.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Typecheck · Lint · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      # `npm ci` respeita o lockfile — instalação reprodutível, sem resolver
+      # versões novas em silêncio a cada execução.
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      # Só publica o artefato quando o build passou — serve para inspecionar o
+      # que seria enviado sem precisar rodar localmente.
+      - name: Guardar o build
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 7

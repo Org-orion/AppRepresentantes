@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { formatDate, formatCurrencyK } from '@/utils/formatters';
 import Select from '@/components/ui/Select';
@@ -511,7 +511,7 @@ export default function FinanceiroPage() {
 
   const reps = useMemo(() => [...new Set(pedidos.map(p => p.representante).filter(Boolean) as string[])].sort(), [pedidos]);
 
-  function matchQuick(p: PedidoFinanceiro): boolean {
+  const matchQuick = useCallback((p: PedidoFinanceiro): boolean => {
     const dEmiss = parseData(p.data_emissao);
     for (const q of quick) {
       if (q === 'completo' && docStatus(p) !== 'completo') return false;
@@ -528,7 +528,7 @@ export default function FinanceiroPage() {
       }
     }
     return true;
-  }
+  }, [quick, hoje]);
 
   const filtrados = useMemo(() => {
     let list = pedidos;
@@ -539,7 +539,7 @@ export default function FinanceiroPage() {
       list = list.filter(p => p.numero_pedido.toLowerCase().includes(q) || p.cliente_nome.toLowerCase().includes(q) || (p.cliente_fantasia ?? '').toLowerCase().includes(q) || (p.cliente_cnpj ?? '').includes(q));
     }
     return list.filter(matchQuick);
-  }, [pedidos, statusFiltro, representante, busca, quick, hoje]);
+  }, [pedidos, statusFiltro, representante, busca, matchQuick]);
 
   useEffect(() => { setPage(1); }, [statusFiltro, representante, busca, quick, view]);
 
@@ -585,7 +585,7 @@ export default function FinanceiroPage() {
 
   const hasFilters = !!(busca || statusFiltro || representante || quick.size > 0);
   function clearFilters() { setBusca(''); setStatusFiltro(''); setRepresentante(''); setQuick(new Set()); }
-  function toggleQuick(k: QuickKey) { setQuick(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; }); }
+  function toggleQuick(k: QuickKey) { setQuick(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; }); }
 
   const QUICK_DEFS: { key: QuickKey; label: string }[] = [
     { key: 'completo', label: 'Completos' },

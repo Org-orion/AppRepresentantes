@@ -19,7 +19,7 @@ import {
 import {
   MapPin, Phone, Mail, ShoppingCart, DollarSign, Calendar,
   Building2, Copy, Check, ChevronLeft, Users, Hash,
-  Sparkles, AlertTriangle, TrendingUp, TrendingDown, Lightbulb, Target,
+  Sparkles, AlertTriangle, TrendingUp, Lightbulb, Target,
   Package, CalendarClock, Receipt, Clock,
 } from 'lucide-react';
 

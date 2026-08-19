@@ -4,7 +4,7 @@ import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown, ChevronUp, Search, Plus, Minus, Trash2, Package, X, ArrowLeft,
-  Send, Truck, Filter, Check, Sparkles, CalendarClock, ShoppingCart, Save,
+  Send, Truck, Filter, Check, Sparkles, ShoppingCart, Save,
   Wrench, ClipboardList, Receipt,
 } from 'lucide-react';
 import Select from '@/components/ui/Select';
