@@ -381,7 +381,12 @@ ela vira risco residual registrado e eu sigo pela Etapa 2.
 
 ## Achados durante a execução
 
-### A1 — INCIDENTE ATIVO (2026-08-19, ~09:55): FDW fora do ar
+### A1 — INCIDENTE **ENCERRADO** (2026-08-19): FDW fora do ar
+
+> **Resolvido no mesmo dia.** Causa: a senha do banco do ERP havia sido rotacionada sem atualizar o
+> user mapping do FDW no banco do Portal. Corrigido com nova rotação + `alter user mapping`.
+> Registro completo, linha do tempo, fatores contribuintes e ações corretivas em
+> `docs/INCIDENTE-2026-08-19-FDW.md`. O texto abaixo é o estado no momento da detecção.
 
 **Evidência:** logs Postgres do Portal com centenas de `could not connect to server "erp_test"`;
 Central de Pedidos exibindo **0 pedidos** para um usuário administrador; Portal saudável
@@ -417,7 +422,7 @@ logo depois do portão de qualidade e antes da mudança de sessão, por ser defe
 | Etapa | Assunto | Estado | Data | Evidência | Observações |
 |---|---|---|---|---|---|
 | 0 | Baseline + branch | **CONCLUÍDO** | 2026-08-19 | branch `chore/saneamento` criada de `fa53856`; commit `452b2f3`; working tree com os 3 arquivos preservados | baseline da tabela acima; nada de código alterado |
-| 1 | Segredos e banco antigo | **BLOQUEADO** | 2026-08-19 | logs do Portal: `could not connect to server "erp_test"`; app com 0 pedidos | incidente A1 — FDW caído. Retomar só após restabelecer a conexão |
+| 1 | Segredos e banco antigo | **PARCIAL** | 2026-08-19 | senha do ERP rotacionada e gravada no user mapping; `count(*)` = 31.906; app com 7.595 pedidos | incidente A1 resolvido. **Falta:** rotacionar a senha do Portal e a parte 1.2 (revogar `anon`) |
 | 2 | `CLAUDE.md` | PENDENTE | — | — | — |
 | 3 | ESLint + CI | PENDENTE | — | — | — |
 | 4 | Sessão | PENDENTE | — | — | D1 aprovada (relogin sempre) |
