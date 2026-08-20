@@ -225,32 +225,70 @@ export async function fetchPedidosCompleto(params: FetchPedidosParams): Promise<
   return { data: pedidos, total, truncated: pedidos.length < total };
 }
 
+// ─── Valores distintos para os filtros (etapa C1) ────────────────────────────
+//
+// PROBLEMA CORRIGIDO AQUI: estas duas funções liam uma COLUNA de pedidos e
+// faziam `new Set(...)` no navegador. Como o Data API corta em API_MAX_ROWS
+// (1.000), o conjunto era montado a partir das 1.000 linhas mais recentes —
+// então um representante sem venda recente simplesmente NÃO APARECIA no filtro,
+// e o admin não tinha como filtrar por ele. Silencioso: a lista vinha curta sem
+// nenhum sinal de que estava incompleta.
+//
+// SOLUÇÃO: agregação no PostgREST (`select=coluna,count()`), que faz GROUP BY
+// implícito pela coluna não agregada — ou seja, o DISTINCT acontece no banco. O
+// que trafega são dezenas de linhas (uma por valor distinto), não milhares, e o
+// teto de 1.000 deixa de morder.
+//
+// ESCOPO: a agregação roda sobre a view `concrem_pedidos_venda`, que já aplica
+// RLS. Um representante continua vendo só os próprios códigos; um diretor, só os
+// grupos dele. Nada de acesso muda.
+//
+// FALLBACK: a agregação do PostgREST pode estar desabilitada no projeto
+// (`db-aggregates-enabled`). Se falhar, voltamos ao caminho antigo — que é
+// incompleto, mas é exatamente o comportamento de hoje, então não há regressão.
+// O aviso no console existe para isso não passar despercebido em desenvolvimento.
+async function valoresDistintos(coluna: 'representante' | 'situacao_entrega'): Promise<string[]> {
+  // `agregado = true` usa `select=coluna,count()`, que faz GROUP BY implícito
+  // pela coluna não agregada — o DISTINCT sai pronto do banco.
+  const montar = (agregado: boolean) => {
+    const q = supabase
+      .from('concrem_pedidos_venda')
+      .select(agregado ? `${coluna}, count()` : coluna)
+      .in('id_nota_conf', VALID_ID_NOTA_CONF)
+      .not(coluna, 'is', null)
+      .order(coluna);
+
+    // Vendas diretas ficam fora da lista de representantes, como em toda leitura.
+    return coluna === 'representante'
+      ? q.not('representante', 'in', `(${REP_EXCLUIDOS.map(r => `"${r}"`).join(',')})`)
+      : q;
+  };
+
+  const extrair = (rows: unknown[]) =>
+    rows.map(r => (r as Record<string, unknown>)[coluna] as string).filter(Boolean);
+
+  const { data, error } = await montar(true);
+  if (!error) return extrair(data ?? []);
+
+  if (import.meta.env.DEV) {
+    console.warn(
+      `[filtros] agregação indisponível para "${coluna}" — caindo no caminho antigo, ` +
+      'que é limitado pelo teto do Data API e pode devolver lista incompleta.',
+      error,
+    );
+  }
+
+  const { data: rows, error: erroLegado } = await montar(false);
+  if (erroLegado) throw erroLegado;
+  return [...new Set(extrair(rows ?? []))];
+}
+
 export async function fetchSituacoesEntrega(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('concrem_pedidos_venda')
-    .select('situacao_entrega')
-    .in('id_nota_conf', VALID_ID_NOTA_CONF)
-    .not('situacao_entrega', 'is', null)
-    .order('situacao_entrega');
-
-  if (error) throw error;
-
-  return [...new Set((data ?? []).map(r => r.situacao_entrega as string))];
+  return valoresDistintos('situacao_entrega');
 }
 
 export async function fetchRepresentantesUnicos(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('concrem_pedidos_venda')
-    .select('representante')
-    .in('id_nota_conf', VALID_ID_NOTA_CONF)
-    .not('representante', 'is', null)
-    .not('representante', 'in', `(${REP_EXCLUIDOS.map(r => `"${r}"`).join(',')})`)
-    .order('representante');
-
-  if (error) throw error;
-
-  const unicos = [...new Set((data ?? []).map(r => r.representante as string))];
-  return unicos;
+  return valoresDistintos('representante');
 }
 
 export interface PedidoHistoricoItem {
