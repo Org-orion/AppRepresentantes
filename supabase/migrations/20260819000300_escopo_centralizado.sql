@@ -5,21 +5,25 @@
 --
 -- POR QUE EXISTE
 -- As futuras RPCs vão consultar `erp.*` DIRETAMENTE, para que os predicados
--- fiquem puramente empurráveis e o FDW consiga mandar filtro e agregação ao ERP
--- (medido em A4, M0, M1 e E0). Só que, ao pular a view, elas perdem a única
--- proteção de escopo que existe hoje — foreign table NÃO tem RLS.
+-- fiquem puramente empurráveis e o FDW mande filtro e agregação ao ERP (medido
+-- em A4, M0, M1 e E0). Ao pular a view, elas perdem a única proteção de escopo
+-- existente — foreign table NÃO tem RLS.
 --
 -- Esta função passa a ser a ÚNICA fonte de verdade sobre "o que este usuário
 -- pode ver". Nenhuma RPC deve reimplementar essa lógica.
 --
 -- REGRA DE FALHA SEGURA
--- Ausência de vínculo NUNCA significa "sem filtro". Sem escopo → `tem_escopo`
+-- Ausência de vínculo NUNCA significa "sem filtro". Sem escopo → tem_escopo
 -- falso → a RPC chamadora devolve conjunto vazio.
+--
+-- SUPERFÍCIE DE ATAQUE
+-- A função NÃO recebe parâmetro nenhum. Não há entrada do cliente para validar,
+-- escapar ou desconfiar: o escopo vem inteiramente do JWT da sessão.
 --
 -- O QUE ESTA MIGRATION **NÃO** FAZ
 -- Não altera a view `public.concrem_pedidos_venda`, não altera RLS, não altera
--- policy, não cria RPC de negócio. As divergências que ela corrige continuam
--- valendo para a view — ver docs/PLANO-SANEAMENTO.md, achados A12 a A14.
+-- policy, não cria RPC de negócio, não mexe no frontend. As divergências A12,
+-- A13 e A14 continuam valendo para a view — ver docs/PLANO-SANEAMENTO.md.
 --
 -- ROLLBACK
 --   drop function if exists public.app_escopo_atual();
@@ -44,26 +48,36 @@ declare
   v_reps   text[] := '{}';
   v_grupos text[] := '{}';
 begin
-  -- Padrão restritivo: se qualquer coisa der errado no caminho, é isto que sai.
+  -- Padrão restritivo: é isto que sai se qualquer coisa falhar no caminho.
   perfil         := 'sem_acesso';
   is_global      := false;
   representantes := '{}';
   grupos         := '{}';
   tem_escopo     := false;
 
-  -- Sem JWT (ex.: anon) → sem escopo.
+  -- Sem JWT (ex.: anon, ou chamada sem sessão) → sem escopo.
   if v_uid is null then
     return next;
     return;
   end if;
 
-  -- Perfil efetivo. A coluna `perfil` é a fonte de verdade; os flags
-  -- admin/operador são FALLBACK de compatibilidade da migração de junho.
-  -- Esta é exatamente a regra de src/constants/perfis.ts (perfilDoUsuario),
-  -- e é DIFERENTE do que app_is_admin() faz hoje — ver achado A12.
+  -- ── PERFIL EFETIVO (regra A12, sem ambiguidade) ──────────────────────────
+  -- A coluna `perfil` DECIDE. Os flags `admin`/`operador` só são consultados
+  -- quando `perfil` é NULL ou string vazia — nunca competem com ela.
   --
-  -- `ativo is true` é deliberado: usuário desativado no portal perde o escopo.
-  -- Hoje nada faz isso, nem no app nem no banco — ver achado A13.
+  --   perfil='diretor'  + admin=true   → 'diretor'  (a coluna vence)
+  --   perfil='admin'    + admin=false  → 'admin'    (a coluna vence)
+  --   perfil=NULL       + admin=true   → 'admin'    (fallback de migração)
+  --   perfil=NULL       + operador=true→ 'operador' (fallback de migração)
+  --   perfil=NULL       + nenhum flag  → 'representante'
+  --
+  -- É exatamente `perfilDoUsuario` de src/constants/perfis.ts, que é a fonte de
+  -- verdade do aplicativo e está coberta por teste automatizado.
+  -- DIFERE de `app_is_admin()`, que lê só o flag — ver achado A12.
+  --
+  -- `u.ativo is true` é deliberado (achado A13): usuário desativado no portal
+  -- não tem escopo, qualquer que seja o perfil, o flag, os representantes ou os
+  -- grupos. `ativo` é NOT NULL, então `is true` cobre todos os casos possíveis.
   select coalesce(
            nullif(btrim(u.perfil), ''),
            case when u.admin    then 'admin'
@@ -71,43 +85,57 @@ begin
                 else 'representante'
            end)
     into v_perfil
-  from concremapprep_usuarios u
+  from public.concremapprep_usuarios u
   where u.id = v_uid
     and u.ativo is true;
 
-  -- Usuário inexistente, inativo, ou sem linha de perfil → sem escopo.
+  -- Usuário inexistente OU inativo → nenhuma linha → v_perfil nulo → sem escopo.
   if v_perfil is null then
     return next;
     return;
   end if;
 
-  -- Códigos de representante vinculados.
-  -- NÃO filtra por `r.ativo` de propósito: preservar o comportamento atual.
-  -- Se representante inativo deve perder o escopo, é decisão de negócio — A14.
+  -- ── REPRESENTANTES VINCULADOS ────────────────────────────────────────────
+  -- NÃO filtra por `r.ativo` DE PROPÓSITO: preserva o comportamento atual de
+  -- `app_my_rep_codes()`. Se representante inativo deve perder escopo, é
+  -- decisão de negócio — achado A14, registrado e não alterado aqui.
   select coalesce(array_agg(distinct r.representante_erp), '{}')
     into v_reps
-  from concremapprep_usuario_representantes ur
-  join concremapprep_representantes r on r.id = ur.representante_id
+  from public.concremapprep_usuario_representantes ur
+  join public.concremapprep_representantes r on r.id = ur.representante_id
   where ur.usuario_id = v_uid
     and r.representante_erp is not null
     and btrim(r.representante_erp) <> '';
 
-  -- Grupos do diretor, já NORMALIZADOS (upper + btrim), como em client_groups.
+  -- ── GRUPOS DO DIRETOR ────────────────────────────────────────────────────
+  -- Nomes já NORMALIZADOS (upper + btrim), como em client_groups.normalized_name.
+  -- Quem consumir deve normalizar `grupo_cliente` do mesmo jeito — e usando
+  -- funções BUILT-IN (upper/btrim/coalesce), nunca `app_norm_grupo()`, que é
+  -- local e quebraria o pushdown do FDW.
   -- Só grupos ativos.
   select coalesce(array_agg(distinct cg.normalized_name), '{}')
     into v_grupos
-  from user_client_groups ucg
-  join client_groups cg on cg.id = ucg.client_group_id
+  from public.user_client_groups ucg
+  join public.client_groups cg on cg.id = ucg.client_group_id
   where ucg.user_id = v_uid
     and cg.is_active is true;
 
+  -- ── RESULTADO ────────────────────────────────────────────────────────────
   perfil         := v_perfil;
   is_global      := v_perfil in ('admin', 'diretor_geral');
   representantes := v_reps;
   grupos         := v_grupos;
 
   -- Tem escopo quem enxerga tudo, quem tem representante, ou quem tem grupo.
-  -- Um 'representante' sem vínculo nenhum cai aqui como FALSE — e é o correto.
+  --
+  -- Comportamento por perfil:
+  --   admin / diretor_geral → is_global=true,  tem_escopo=true
+  --   diretor               → grupos vinculados; sem grupo e sem rep ⇒ VAZIO
+  --   representante         → seus rep codes;   sem rep            ⇒ VAZIO
+  --   operador              → tratado como representante (decisão D3:
+  --                           operador sem rep codes vê 0 pedidos) ⇒ VAZIO
+  --
+  -- Em NENHUM caso a ausência de vínculo produz acesso global.
   tem_escopo := is_global
                 or coalesce(array_length(v_reps, 1), 0) > 0
                 or coalesce(array_length(v_grupos, 1), 0) > 0;
@@ -124,22 +152,16 @@ comment on function public.app_escopo_atual() is
 -- PRIVILÉGIOS — mínimo possível
 -- ----------------------------------------------------------------------------
 -- No PostgreSQL, EXECUTE é concedido a PUBLIC por padrão em toda função nova.
--- Revogar é OBRIGATÓRIO, não opcional.
+-- Revogar é OBRIGATÓRIO, não zelo extra.
 --
--- O frontend NÃO precisa chamar esta função: ela é infraestrutura interna. As
--- RPCs de negócio serão `security definer` de dono `postgres`, então executam
--- esta aqui com os privilégios do dono — sem precisar de grant para o cliente.
+-- O frontend NÃO chama esta função: ela é infraestrutura interna. As RPCs de
+-- negócio serão `security definer` de dono `postgres` e a executam com os
+-- privilégios do dono — sem precisar de grant para o cliente.
 --
--- Nota: `auth.uid()` continua funcionando dentro de SECURITY DEFINER porque lê
--- a claim do JWT da SESSÃO (request.jwt.claims), não o papel corrente.
+-- `auth.uid()` continua funcionando dentro de SECURITY DEFINER porque lê a claim
+-- do JWT da SESSÃO (request.jwt.claims), não o papel corrente.
 -- ============================================================================
 
 revoke all on function public.app_escopo_atual() from public;
 revoke all on function public.app_escopo_atual() from anon;
 revoke all on function public.app_escopo_atual() from authenticated;
-
--- Validação (rodar depois de aplicar):
---   select proname, proacl, prosecdef, provolatile, proconfig
---     from pg_proc where proname = 'app_escopo_atual';
---   Esperado: prosecdef = true · provolatile = 's' · proconfig = {search_path=public}
---             proacl SEM anon e SEM authenticated
