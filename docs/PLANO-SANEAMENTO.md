@@ -637,6 +637,55 @@ antes**.
 **Severidade:** alta. Um erro de operação, uma exclusão acidental ou uma migration mal escrita hoje não
 tem volta.
 
+### A10 — As views do ERP perderam o `security_barrier`
+
+**Evidência (PASSO 1 do C0, consulta 1.5):** `pg_class.reloptions` de `public.concrem_pedidos_venda`
+está **`null`**. Se a opção estivesse ativa, apareceria `{security_barrier=true}`.
+
+**Como se perdeu:** `20260630000400_erp_fdw.sql` criou as cinco views **com** a opção:
+
+```sql
+create view public.concrem_pedidos_venda with (security_barrier = true) as …
+```
+
+`20260706000100_diretores_e_grupos.sql` recriou quatro delas com `create or replace view … as`, **sem
+repetir o `with (...)`** — e a opção não sobreviveu. Atingidas: `concrem_pedidos_venda`,
+`concrem_pedidos_status`, `concrem_pedidos_status_historico` e `relatorio_entrega_anexos`.
+`concremprodutos_produtos` não foi recriada e **provavelmente ainda tem** a opção (confirmar).
+
+**O que `security_barrier` faz:** garante que as condições da própria view sejam avaliadas **antes** de
+qualquer condição vinda de fora. Sem ela, o planejador pode antecipar uma função ou operador *leaky* do
+usuário e executá-lo sobre linhas que o filtro de escopo ainda descartaria — canal para inferir dados de
+fora do escopo (ex.: uma função que levanta erro contendo o valor da linha).
+
+**Severidade: moderada, não crítica.** O risco depende de o usuário conseguir injetar uma expressão
+arbitrária na consulta. Pelo PostgREST isso é limitado, e as tabelas nativas continuam protegidas por
+**RLS de verdade** — o `security_barrier` protegia apenas estas views sobre o FDW. Ainda assim, é uma
+proteção que o projeto decidiu ter, documentou ter, e não tem mais.
+
+**Duas consequências:**
+
+1. **Segurança:** proteção documentada no `CLAUDE.md` e no plano não existe no banco. Documentação e
+   realidade divergiam de novo.
+2. **Diagnóstico — e esta é boa:** a ausência do `security_barrier` **enfraquece a hipótese da camada 3**.
+   Era o principal mecanismo que eu apontava para explicar a falta de pushdown. Sem barreira, o
+   planejador está livre para empurrar os filtros do usuário para o ERP. A medição A–G ficou mais
+   importante, não menos.
+
+**Não proposto agora** — restaurar a opção é alteração de view, fora do escopo autorizado. Fica
+registrado para decisão.
+
+### A11 — O FDW não tem `fetch_size` configurado
+
+**Evidência (1.1):** as opções do server `erp_test` são apenas
+`host`, `port`, `dbname`, `sslmode`. Sem `fetch_size`, o `postgres_fdw` usa o padrão de **100 linhas por
+viagem**. Trazer 7.600 linhas vira ~76 idas e voltas até o ERP, atravessando o pooler.
+
+Também ausentes: `use_remote_estimate` (por isso o planejador não tem estatística real da tabela remota),
+`keep_connections`, `async_capable`, `extensions`.
+
+Observação, não proposta: qualquer ajuste aqui é alteração de FDW e depende de decisão.
+
 ## Verificação visual pendente — Etapa 3.5
 
 Roteiro reproduzível, ~2 minutos, sem tocar em nada:

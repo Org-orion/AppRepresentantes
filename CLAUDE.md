@@ -108,8 +108,13 @@ Nas Edge Functions: `TURNSTILE_SECRET_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (runtime
 `concrem_pedidos_venda` · `concrem_pedidos_status` · `concrem_pedidos_status_historico` ·
 `relatorio_entrega_anexos` · `concremprodutos_produtos`
 
-Cada uma é uma view `security_barrier` sobre uma foreign table do schema `erp`, filtrando por
-`app_is_admin()` ou `app_my_rep_codes()`.
+Cada uma é uma view sobre uma foreign table do schema `erp`, filtrando por `app_is_admin()`,
+`app_perfil()`, `app_diretor_ve_grupo()` ou `app_my_rep_codes()`.
+
+> ⚠️ **Foram criadas com `security_barrier = true`, mas quatro delas perderam a opção** quando
+> `20260706000100_diretores_e_grupos.sql` as recriou com `create or replace view` sem repetir o
+> `with (...)`. Verificado no catálogo: `reloptions` de `concrem_pedidos_venda` está `null`.
+> Ver achado A10 em `docs/PLANO-SANEAMENTO.md`.
 
 > ⚠️ **A tabela real de anexos no ERP chama-se `concrem_relatorio_entrega_anexos`.** No Portal ela é
 > exposta como `relatorio_entrega_anexos` — é o nome que o app usa.
