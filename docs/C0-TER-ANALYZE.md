@@ -314,3 +314,81 @@ nem `Sort` locais.
 Cenário possível: estimativas corretas e o planejador **ainda** preferindo `Sort`/`Limit` locais. Aí a
 conclusão muda — passaria a ser decisão do modelo de custo, não falta de informação, e a alternativa
 seria avaliar `use_remote_estimate` **para esta tabela**. Não antecipar; medir primeiro.
+
+
+---
+
+# RESULTADO dos PASSOS 1 e 2 — 2026-08-19
+
+| Item | Valor |
+|---|---|
+| `analyze_sampling` no server `erp_test` | **não definido → `auto`** |
+| `analyze_sampling` na foreign table | não definido → herda do server |
+| `reltuples` (todas as 5 foreign tables) | **`-1`** |
+| `relpages` | `0` |
+| `relkind` | `f` (foreign table) |
+| `pg_stats` para as 4 colunas | **vazio** — `Success. No rows returned.` |
+
+## Confirmação documental (não de memória)
+
+Documentação oficial do **PostgreSQL 17**, `postgres-fdw`, citada literalmente:
+
+> *"The supported values are `off`, `random`, `system`, `bernoulli` and `auto`. `off` disables remote
+> sampling, so all data are transferred and sampled locally. […] `auto` **(the default)** picks the
+> recommended sampling method automatically; currently it means either `bernoulli` or `random`
+> depending on the remote server version."*
+
+E sobre o `ANALYZE`:
+
+> *"Running ANALYZE on the foreign table is the way to update the local statistics; this will perform a
+> scan of the remote table and then calculate and store statistics just as though the table were local."*
+
+**Consequências verificadas:**
+
+1. `auto` **é** o padrão — a amostragem acontece **no ERP**, não por transferência total.
+2. Como o ERP é PostgreSQL ≥ 9.5, `auto` resolve para **`bernoulli`** (`TABLESAMPLE`).
+3. **`off` seria o cenário ruim** — e não é o nosso.
+
+## Revisão crítica da regra "300 × `default_statistics_target`"
+
+**A regra vale**, mas com três nuances que só agora ficam explícitas:
+
+1. **É do núcleo do `ANALYZE`, não do FDW.** O alvo de linhas (`targrows`) é `300 × statistics_target` da
+   coluna com maior alvo, e é passado ao FDW. Com `20` → **~6.000 linhas**; com o padrão `100` →
+   **~30.000**, de uma tabela de ~31.900.
+2. **É aproximado.** Com `bernoulli`, a fração é calculada a partir de uma estimativa do tamanho da
+   tabela; o número devolvido oscila em torno do alvo.
+3. **Só reduz tráfego porque `analyze_sampling` ≠ `off`.** Se fosse `off`, o `postgres_fdw` traria a
+   tabela **inteira** e amostraria aqui — e baixar o alvo **não economizaria nada**. Confirmado que não é
+   o caso.
+
+## O que o ERP vai fazer
+
+`TABLESAMPLE BERNOULLI` **percorre a tabela inteira no ERP** e escolhe linhas por probabilidade — ou seja,
+**uma varredura sequencial lá**, com apenas ~6.000 linhas atravessando a rede. Custo no ERP: segundos de
+CPU/IO numa tabela de ~32 mil linhas, sem lock além do de leitura, sem escrita.
+
+Resumindo: **o ERP lê tudo; só a amostra viaja.**
+
+## Por que `default_statistics_target = 20` é adequado aqui
+
+| Coluna | O que precisamos | 20 é suficiente? |
+|---|---|---|
+| `id_nota_conf` | seletividade de `IN (4 valores)` | ✅ pouquíssimos distintos; 20 MCVs cobrem tudo |
+| `representante` | `n_distinct` | ✅ o A3 estimou 18 grupos; 20 MCVs cobrem |
+| `data_emissao` | histograma para faixa | ✅ 20 baldes é grosseiro, mas suficiente para range |
+| `grupo_cliente` | `n_distinct` | ✅ |
+| `reltuples` | contagem total | ✅ independe do alvo |
+
+Baixar para 10 economizaria pouco e pioraria o histograma de `data_emissao`. **20 está bem escolhido.**
+
+## Nota sobre manutenção
+
+A documentação diz que rodar `ANALYZE` "**is the way**" de atualizar a estatística e **não menciona
+nenhum mecanismo automático**. Meu entendimento — de alta confiança, mas **não confirmado por esta
+página** — é que o autovacuum não cobre foreign table. Se estiver certo, a estatística envelhece e
+precisa de agenda.
+
+## Classificação
+
+**PODE EXECUTAR COMO ESTÁ.**
