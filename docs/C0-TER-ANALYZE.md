@@ -493,3 +493,58 @@ Eu estimei "dezenas a mais de cem MB" para a tabela inteira. `relpages = 5.278` 
 **Superestimei o custo.** O `dados_tabela` não é tão pesado quanto supus.
 
 ## Classificação: **ANALYZE ATINGIU O OBJETIVO**
+
+
+---
+
+# RESULTADO dos testes pós-`ANALYZE`
+
+| Teste | Antes do `ANALYZE` | Depois | Veredito |
+|---|---|---|---|
+| **L4** | `rows=4` · `Limit` local · sem `LIMIT` remoto | `WHERE` + **`LIMIT` remotos** | ✅ **corrigido** |
+| **L5** | `rows=4` · `Limit` → `Sort` → `Foreign Scan` | `WHERE` + **`ORDER BY` + `LIMIT` remotos** | ✅ **corrigido** |
+| **A5 original** | `GroupAggregate` local | continua local | — |
+| **A5 com `::timestamp`** | — | **continua local** (`HashAggregate`) | ❌ **hipótese derrubada** |
+
+## Conclusão firme: o `ANALYZE` resolveu o planejamento das listagens
+
+L5 era o caso que representa **toda listagem paginada do app**. Ele passou a empurrar `WHERE`,
+`ORDER BY` **e** `LIMIT` para o ERP. O nó `Sort` local desapareceu.
+
+> **A causa raiz identificada no C0-bis estava certa, e a correção funcionou.** Não era limitação do
+> driver, nem da view, nem do plano Supabase: era ausência de estatística.
+
+## Hipótese do cast — **DERRUBADA**
+
+Eu previ que `date_trunc('month', data_emissao::timestamp)` (variante `IMMUTABLE`) seria empurrável, e
+que a variante `timestamptz` (`STABLE`) era o impedimento. **Errado.** As duas ficaram locais, com o
+mesmo `Remote SQL` trazendo `data_emissao, total_pedido_venda` linha a linha.
+
+Terceira hipótese minha derrubada por medição nesta investigação — depois do `LIMIT` e do
+`security_barrier`. O padrão é consistente: **eu erro quando raciocino sobre o mecanismo em vez de medir.**
+
+## O que sabemos sobre agregação empurrada, e o que não sabemos
+
+| Já medido | Resultado |
+|---|---|
+| `count(*)` sem `GROUP BY` (A1) | ✅ remota |
+| `sum()` sem `GROUP BY` (A2) | ✅ remota |
+| `GROUP BY` **coluna simples**, sem filtro de data (A3) | ✅ remota |
+| `GROUP BY` **expressão** `date_trunc`, com filtro de data (A5, ambas variantes) | ❌ local |
+
+**Duas diferenças ao mesmo tempo** entre A3 e A5: a chave de agrupamento deixou de ser coluna simples e
+virou expressão, **e** entrou um filtro de data. Nenhum teste isola qual das duas importa — é o que a
+rodada M precisa resolver.
+
+## Requisitos que o `postgres_fdw` exige para empurrar `GROUP BY`
+
+Lista do que pode estar bloqueando, para saber o que procurar nos planos:
+
+1. **Nenhuma condição local** sobrando na relação base — se sobrar uma, a agregação não desce.
+2. **Expressão de agrupamento *shippable*** — função built-in ou declarada em `extensions`.
+3. **Função de agregação *shippable*** — `count`/`sum` são built-in.
+4. **Sem `HAVING` não empurrável**, sem `DISTINCT`/`ORDER BY` dentro do agregado, sem `GROUPING SETS`.
+5. **Custo** — mesmo existindo caminho remoto, o planejador pode preferir o local.
+
+O item **5** é o que o L6 mostrou valer para `ORDER BY`: o caminho existia e não era escolhido. **Nada
+garante que não seja o mesmo caso aqui** — e é exatamente o que o M3 testa.
