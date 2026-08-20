@@ -19,10 +19,12 @@ do que estava aplicado.
 | `20260706000100_diretores_e_grupos.sql` | ✅ sim | SQL Editor — perfis diretor/diretor geral e grupos de cliente |
 | `20260819000100_telefone_usuarios.sql` | ⬜ **não** | pendente — Etapa 7.2 |
 | `20260819000200_pedidos_conferidos.sql` | ⬜ **não** | pendente — Etapa 7.3 |
-| `20260819000300_escopo_centralizado.sql` | ⬜ **não** | pendente — etapa E1 do `docs/PLANO-DASHBOARD-RPC.md` |
+| `20260819000300_escopo_centralizado.sql` | ✅ sim | SQL Editor, 20/08/2026 — E1 aplicada e validada (B1–B4, P6, S1–S8, S11, S12, S16) |
 
 > As cinco primeiras são **histórico**. Estão aqui para o schema ser reconstituível e auditável —
-> **não** devem ser reexecutadas em produção. As duas últimas são idempotentes e ainda não rodaram.
+> **não** devem ser reexecutadas em produção. `20260819000300_escopo_centralizado.sql` foi aplicada
+> manualmente em 20/08/2026. `20260819000100_telefone_usuarios.sql` e
+> `20260819000200_pedidos_conferidos.sql` continuam pendentes.
 
 ## Como aplicar
 

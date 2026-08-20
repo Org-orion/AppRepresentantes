@@ -42,3 +42,6 @@ Thumbs.db
 backup-*.sql
 *.dump
 dump-*.sql
+
+# Supabase CLI local state
+supabase/.temp/
