@@ -686,6 +686,48 @@ Também ausentes: `use_remote_estimate` (por isso o planejador não tem estatís
 
 Observação, não proposta: qualquer ajuste aqui é alteração de FDW e depende de decisão.
 
+### A12 — A view usa o flag `admin`; o app usa a coluna `perfil`
+
+`app_is_admin()` lê **`concremapprep_usuarios.admin`** (flag legado). O frontend
+(`src/constants/perfis.ts`) usa a coluna **`perfil`** como fonte de verdade, com os flags apenas como
+*fallback* — regra documentada no `CLAUDE.md` e **coberta por teste** desde a Etapa 6.
+
+**As duas regras discordam quando divergem:**
+
+| Situação | App decide | Banco decide | Efeito |
+|---|---|---|---|
+| `perfil='diretor'` **e** `admin=true` | diretor | **admin** | **o banco entrega acesso global** a quem o app trata como diretor |
+| `perfil='admin'` **e** `admin=false` | admin | não-admin | o banco nega o que o app permite |
+
+O primeiro caso é o perigoso: sobra do backfill de junho, que preencheu `perfil` **sem** limpar os flags.
+Um usuário promovido a diretor mantendo `admin=true` **vê tudo pela view**.
+
+**Severidade: alta**, condicionada a existir esse par no banco. Verificável pelo teste **S10**.
+
+### A13 — Usuário desativado continua com acesso aos dados
+
+Nem o app nem o banco bloqueiam `concremapprep_usuarios.ativo = false`:
+
+- `AuthContext` carrega `ativo` para o objeto do usuário e **nunca o consulta**;
+- `app_is_admin()`, `app_perfil()` e `app_my_rep_codes()` **não filtram por `ativo`**;
+- nenhuma policy usa `ativo`.
+
+Desativar alguém na tela de Usuários é, hoje, **puramente cosmético**: enquanto o login no Supabase Auth
+funcionar, a pessoa continua lendo tudo do escopo dela.
+
+**Severidade: alta.** É o caminho normal de desligamento de um representante.
+
+`app_escopo_atual()` (E1) exige `ativo is true` — mas **a view continua sem exigir**, então o problema só
+some quando as telas migrarem para as RPCs.
+
+### A14 — `app_my_rep_codes()` ignora `representante.ativo`
+
+A função junta `concremapprep_usuario_representantes` com `concremapprep_representantes` **sem filtrar
+`r.ativo`**. Representante desativado no cadastro continua concedendo escopo.
+
+**Severidade: a decidir** — pode ser intencional (manter histórico visível). `app_escopo_atual()`
+**preserva o comportamento atual de propósito**; mudar exige decisão de negócio.
+
 ## Verificação visual pendente — Etapa 3.5
 
 Roteiro reproduzível, ~2 minutos, sem tocar em nada:
