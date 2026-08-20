@@ -392,3 +392,28 @@ precisa de agenda.
 ## Classificação
 
 **PODE EXECUTAR COMO ESTÁ.**
+
+
+---
+
+# VERIFICAÇÃO PÓS-`ANALYZE` — executado em 2026-08-19
+
+`ANALYZE` autorizado e executado com `default_statistics_target = 20`, dentro de transação. Sem erro.
+
+## Consultas de verificação (somente leitura)
+
+As V1 e V2 são **idênticas** às do PASSO 2, para a comparação antes × depois ser direta. V3 e V4 são
+detalhe novo; V5 e V6 são as garantias de que nada vazou nem mudou.
+
+Ver a resposta correspondente para os SQLs e o critério de leitura de cada uma.
+
+### Controle embutido
+
+A V1 lista **as cinco** foreign tables. Só `concrem_pedidos_venda` foi analisada — as outras quatro
+**devem continuar com `reltuples = -1`**. Se alguma delas mudar, algo aconteceu fora do combinado.
+
+### Observação sobre rastreabilidade
+
+Foreign table **não aparece** em `pg_stat_user_tables`/`pg_stat_all_tables`, então **não há
+`last_analyze`** para consultar. A evidência de que o `ANALYZE` rodou é o próprio conteúdo de
+`reltuples` e `pg_stats` — mais um motivo para ter registrado o "antes".
