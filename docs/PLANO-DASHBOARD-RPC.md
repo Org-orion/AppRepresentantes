@@ -276,11 +276,11 @@ grandeza do que a tela mostra, subir o alvo **daquelas colunas** (não global) e
 
 ## 9. Plano de implementação — etapas pequenas
 
-| # | Etapa | Toca banco? | Reversível |
-|---|---|---|---|
+| # | Etapa | Toca banco? | Reversível | Estado |
+|---|---|---|---|---|
 | **E0** | **Medir pushdown com PARÂMETROS** via `PREPARE`/`EXPLAIN EXECUTE` — só `EXPLAIN`, nada criado | não | — |
-| E1 | Função auxiliar única de escopo + testes de isolamento | sim (migration) | `drop function` |
-| E2 | RPC `app_dashboard_serie_diaria` + grants + revoke de `anon` | sim | `drop function` |
+| E1 | Função auxiliar única de escopo + testes de isolamento | sim (migration) | `drop function` | ✅ **APLICADA e validada em 2026-08-19** — owner `postgres`, `search_path=''`, sem EXECUTE para PUBLIC/anon/authenticated; S1–S9, S11, S12 e S16 aprovados |
+| E2 | RPC `app_dashboard_serie_diaria` + grants + revoke de `anon` | sim | `drop function` | 🔵 plano em revisão — `docs/E2-PLANO-RPC-DASHBOARD.md` |
 | E3 | Testes S1–S10 e F1–F7 contra a RPC | não | — |
 | E4 | `consolidarMeses` (função pura) + teste do dia 1º | não | commit |
 | E5 | `dashboard.ts` passa a usar a RPC, atrás do hook existente | não | commit |
