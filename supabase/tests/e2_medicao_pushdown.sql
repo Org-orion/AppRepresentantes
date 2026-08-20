@@ -268,3 +268,106 @@ rollback;
 -- N4 e N5 são os decisivos: o plano completo do caminho mais complexo, com
 -- literais e com parâmetros. Se os dois passarem, a RPC pode ser escrita como
 -- desenhada. Se N1 falhar, o ramo do diretor precisa de outro desenho.
+
+
+-- ############################################################################
+-- RESULTADO N1 — REPROVADO (2026-08-19)
+-- ############################################################################
+-- Plano obtido:
+--   GroupAggregate
+--     -> Sort
+--          -> Foreign Scan on erp.concrem_pedidos_venda
+--
+--   Filter local:
+--     COALESCE(NULLIF(upper(btrim(v.grupo_cliente)), ''), 'SEM GRUPO')
+--       = ANY ('{"DAG COMERCIO"}')
+--
+--   Remote SQL levou SOMENTE:
+--     id_nota_conf = ANY ('{307,309,613,665}')
+--
+-- Consequências:
+--   • a normalização de grupo NÃO desce ao ERP;
+--   • a agregação volta a ser local, exatamente como no A5/M2/M3;
+--   • o ramo C proposto está REPROVADO — não escrever a RPC com esse desenho;
+--   • N2, N4 e N5 ficam suspensos: todos dependem desta expressão.
+--
+-- Observação: `v.representante = any (array[...])` JÁ desceu antes (caso E do C0
+-- e N7 do desenho), então a comparação de texto contra array não é o problema.
+-- O que muda aqui é haver FUNÇÃO aplicada sobre a coluna.
+
+
+-- ############################################################################
+-- N1a — coluna crua, sem função nenhuma
+-- ############################################################################
+-- ISOLA: a comparação de `grupo_cliente` contra array, SEM qualquer função.
+-- É a linha de base. Se isto não descer, o problema não é a normalização — é a
+-- própria coluna ou o tipo, e todo o desenho de grupo precisa ser repensado.
+explain (verbose, costs, format text)
+select v.data_emissao, count(*), sum(v.total_pedido_venda)
+from erp.concrem_pedidos_venda v
+where v.id_nota_conf = any (array[307,309,613,665])
+  and v.grupo_cliente = any (array['DAG COMERCIO'])
+group by v.data_emissao;
+-- PASSA: `Relations: Aggregate on (erp.concrem_pedidos_venda)` e
+--        `grupo_cliente = ANY (...)` dentro do `Remote SQL`.
+-- FALHA: `Filter:` local com a comparação, ou `GroupAggregate`/`HashAggregate`
+--        acima do `Foreign Scan`.
+
+
+-- ############################################################################
+-- N1b — só `btrim()`
+-- ############################################################################
+-- ISOLA: uma única função sobre a coluna. `btrim` remove espaços e é
+-- collation-sensitive no resultado.
+explain (verbose, costs, format text)
+select v.data_emissao, count(*), sum(v.total_pedido_venda)
+from erp.concrem_pedidos_venda v
+where v.id_nota_conf = any (array[307,309,613,665])
+  and btrim(v.grupo_cliente) = any (array['DAG COMERCIO'])
+group by v.data_emissao;
+-- PASSA: `Relations: Aggregate on (...)` e `btrim(grupo_cliente) = ANY (...)`
+--        dentro do `Remote SQL`.
+-- FALHA: `Filter:` local com `btrim(...)`, ou agregação local.
+
+
+-- ############################################################################
+-- N1c — só `upper()`
+-- ############################################################################
+-- ISOLA: a outra função sozinha, para saber se o bloqueio é de UMA função
+-- específica ou de QUALQUER função sobre a coluna.
+explain (verbose, costs, format text)
+select v.data_emissao, count(*), sum(v.total_pedido_venda)
+from erp.concrem_pedidos_venda v
+where v.id_nota_conf = any (array[307,309,613,665])
+  and upper(v.grupo_cliente) = any (array['DAG COMERCIO'])
+group by v.data_emissao;
+-- PASSA: `Relations: Aggregate on (...)` e `upper(grupo_cliente) = ANY (...)`
+--        dentro do `Remote SQL`.
+-- FALHA: `Filter:` local com `upper(...)`, ou agregação local.
+
+
+-- ############################################################################
+-- N1d — `upper(btrim())` composto
+-- ############################################################################
+-- ISOLA: a composição das duas, sem `coalesce`/`nullif`. Comparado com N1b e
+-- N1c, mostra se o bloqueio aparece só ao aninhar funções.
+explain (verbose, costs, format text)
+select v.data_emissao, count(*), sum(v.total_pedido_venda)
+from erp.concrem_pedidos_venda v
+where v.id_nota_conf = any (array[307,309,613,665])
+  and upper(btrim(v.grupo_cliente)) = any (array['DAG COMERCIO'])
+group by v.data_emissao;
+-- PASSA: `Relations: Aggregate on (...)` e `upper(btrim(grupo_cliente)) = ANY (...)`
+--        dentro do `Remote SQL`.
+-- FALHA: `Filter:` local com a expressão, ou agregação local.
+
+
+-- ############################################################################
+-- Registro N1a–N1d
+-- ############################################################################
+-- | Teste | Expressão              | `Relations: Aggregate on` ? | No Remote SQL ? | Veredito |
+-- |-------|------------------------|------------------------------|-----------------|----------|
+-- | N1a   | coluna crua            |                              |                 |          |
+-- | N1b   | btrim(col)             |                              |                 |          |
+-- | N1c   | upper(col)             |                              |                 |          |
+-- | N1d   | upper(btrim(col))      |                              |                 |          |

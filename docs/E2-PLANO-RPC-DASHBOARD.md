@@ -45,6 +45,34 @@ novos vão para o `EXPLAIN` primeiro.
 
 **N4 e N5 são os decisivos.** Se N1 falhar, o desenho do ramo do diretor muda antes de existir código.
 
+### 🔴 N1 REPROVADO — 2026-08-20
+
+```
+GroupAggregate
+  -> Sort
+       -> Foreign Scan on erp.concrem_pedidos_venda
+
+Filter local: COALESCE(NULLIF(upper(btrim(v.grupo_cliente)), ''), 'SEM GRUPO') = ANY ('{"DAG COMERCIO"}')
+Remote SQL levou só: id_nota_conf = ANY ('{307,309,613,665}')
+```
+
+A normalização de grupo **não desce ao ERP** e a agregação volta a ser local — mesma assinatura de A5,
+M2 e M3. **O ramo C está reprovado.** N2, N4 e N5 ficam suspensos: todos dependem desta expressão.
+
+Nota: `representante = any (array[...])` **já desceu** antes (caso E do C0). A diferença aqui é haver
+**função aplicada sobre a coluna**. Daí a decomposição N1a–N1d — uma variável por teste, sem
+`coalesce`/`nullif`, para descobrir exatamente onde o pushdown morre.
+
+| # | Expressão | O que isola |
+|---|---|---|
+| N1a | `grupo_cliente` | linha de base: a coluna crua, sem função |
+| N1b | `btrim(col)` | uma função só |
+| N1c | `upper(col)` | a outra função só |
+| N1d | `upper(btrim(col))` | a composição |
+
+Sem hipótese registrada antes do resultado — errei três vezes nesta investigação raciocinando sobre o
+mecanismo em vez de medir.
+
 ### Regras de negócio conferidas no código (2026-08-19)
 
 | Regra | Origem | Valores |
