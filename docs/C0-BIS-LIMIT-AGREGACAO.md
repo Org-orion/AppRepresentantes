@@ -14,7 +14,24 @@
 | H3 | Agregação **é** empurrável quando **não sobra condição local** — a disjunção de escopo da view é o que impede | A1–A3 direto na foreign table devem mostrar `count`/`sum`/`GROUP BY` no `Remote SQL` |
 | H4 | Escopo resolvido em **array constante** mantém a agregação empurrável | A4/A5 decidem a viabilidade da RPC |
 
+| H5 | **`LIMIT` sem `ORDER BY` local já economiza tráfego**, mesmo sem pushdown de `LIMIT`: o `postgres_fdw` lê por **cursor** em lotes de `fetch_size`, e o nó `Limit` interrompe a busca quando tem linhas suficientes. Com `Sort` local no meio, a interrupção não acontece — o `Sort` precisa consumir tudo antes de devolver a primeira linha | só `EXPLAIN ANALYZE` prova (linhas efetivamente lidas). O `EXPLAIN` puro **não** decide |
+
 **H1 é a que eu afirmei sem medir no C0.** Se cair, minha conclusão sobre paginação muda.
+
+**H5 corrige um erro meu no C0.** Eu escrevi que "o ERP devolve tudo que casa com o `WHERE`". Isso vale
+para a *consulta*, não necessariamente para o *tráfego*: o cursor pode parar antes. O que torna o caso E
+caro não é o `LIMIT` não descer — é o **`Sort` local**, que obriga a ler tudo antes de ordenar.
+
+### A cadeia que realmente decide a arquitetura
+
+```
+ORDER BY desce?  ──não──►  Sort local  ──►  lê TODAS as linhas do WHERE  ──►  paginação cara
+       │
+       └──sim──►  sem Sort  ──►  Limit interrompe o cursor  ──►  ~fetch_size linhas  ──►  paginação barata
+```
+
+Repare: **o pushdown de `LIMIT` deixa de ser necessário** se o `ORDER BY` descer. É por isso que L5 e L6
+passaram a ser os testes mais importantes deste roteiro — mais que L1.
 
 ---
 
@@ -64,6 +81,23 @@ from pg_database where datname = current_database();
 **O que observar:** se `data_emissao` for `date` ou `timestamp`, **não há collation envolvida** — e a
 hipótese "collation impede o `ORDER BY` remoto" morre aqui, antes de qualquer teste. Se for `text`,
 collation passa a ser candidata a causa.
+
+### RESULTADO do PASSO 0 (2026-08-19)
+
+| Item | Valor | Efeito nos testes |
+|---|---|---|
+| PostgreSQL do Portal | **17.6** | versão recente; suporta pushdown de `WHERE`, `ORDER BY`, `JOIN` e agregação |
+| `data_emissao` | **`date`** | **sem collation** → hipótese de collation **descartada** para o `ORDER BY` testado |
+| `id_nota_conf` | `integer` | sem collation |
+| `total_pedido_venda` | `numeric` | sem collation |
+| `representante`, `numero_pedido`, `grupo_cliente` | `text`, collation `default` | igualdade é empurrável (confirmado no C0); **ordenação por texto** é outra história — ver ressalva |
+| Opções de coluna do FDW | só `column_name=` | mapeamento de nome; **nada que afete pushdown** |
+| Collation do banco do Portal | `en_US.UTF-8` | ver ressalva |
+
+**Ressalva NÃO VERIFICADA — collation do ERP.** O Portal usa `en_US.UTF-8`. **Não sabemos a do ERP** —
+não dá para consultar de fora sem conectar lá. Se forem diferentes, comparações e ordenações de **texto**
+empurradas podem ordenar diferente do esperado. Não afeta os testes deste roteiro (`data_emissao` é
+`date`), mas afeta qualquer decisão futura de ordenar por `cliente_nome` ou `representante` no remoto.
 
 ---
 
