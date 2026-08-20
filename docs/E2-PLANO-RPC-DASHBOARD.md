@@ -278,7 +278,50 @@ commit;
 
 ---
 
-## Pontos que quero que você conteste antes de eu implementar
+## Decisões tomadas (2026-08-19)
+
+| # | Decisão |
+|---|---|
+| **D-1** | Preservar o comportamento atual para `representante` NULL. `<> all(...)` com NULL resulta em NULL e a linha é **descartada** — ~1.550 pedidos, 4,85% medidos. Documentado, **não corrigido agora**; fica como decisão futura |
+| **D-2** | Aceitar temporariamente a duplicação de `id_nota_conf` e `REP_EXCLUIDOS` entre TypeScript e SQL. **Sem tabela de configuração na E2.** Dívida transitória, a consolidar quando o frontend migrar na E5 |
+| **D-3** | `p_representante` inexistente devolve **zero linhas**. Sem consulta de validação |
+| **D-4** | A RPC resolve **apenas a série de vendas**: `pedidos`, `valor_total`, série diária. **NÃO** resolve faturado, comissão, pipeline nem carteira. **A E5 não elimina todo o truncamento do Dashboard** |
+
+## D-5 — Quem usa o filtro de representante no Dashboard hoje
+
+Verificado em `src/pages/DashboardPage.tsx` e `src/hooks/useDashboardStats.ts`:
+
+```
+DashboardPage.tsx:595   const isAdmin = perfil === 'admin' || perfil === 'diretor_geral';
+DashboardPage.tsx:797   {isAdmin && ( <Select … repFiltro … /> )}
+useDashboardStats.ts    const rep = representante && representante !== 'todos' ? representante : undefined;
+```
+
+| Perfil | Vê o filtro? | Consequência |
+|---|---|---|
+| representante (inclusive **com múltiplos códigos ERP**) | ❌ | não consegue filtrar por um dos próprios códigos |
+| operador | ❌ | — |
+| diretor | ❌ | — |
+| admin | ✅ | único caminho para enviar o parâmetro |
+| diretor_geral | ✅ | idem |
+
+`isAdmin` é **exatamente** `isGlobal`. O `Select` só é renderizado para eles, e o estado nasce em
+`'todos'`, que o hook converte para `undefined`.
+
+### Conclusão: ignorar `p_representante` para não-globais **preserva a UX atual**
+
+Nenhum não-global consegue enviar o parâmetro hoje. O contrato proposto está correto e não regride nada.
+
+**Observação, não mudança:** hoje `dashboard.ts` aplicaria o filtro para qualquer perfil, se ele
+chegasse — mas o `.in('representante', repCodes)` do escopo continua aplicado, então mesmo uma requisição
+forjada só conseguiria **estreitar** dentro do próprio escopo. Ou seja: o comportamento atual já é
+"só estreita", e a RPC mantém isso.
+
+**Se um dia quiserem permitir que o representante com vários códigos filtre por um deles**, a forma
+correta é um conjunto **adicional** (`and (p_representante is null or v.representante = p_representante)`)
+**sobre** o predicado de escopo — nunca substituindo-o. Fora do escopo da E2.
+
+## Pontos que já foram contestados e decididos
 
 ### D-1 · `representante` nulo é excluído silenciosamente
 
