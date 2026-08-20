@@ -107,3 +107,31 @@ where n.nspname = 'public'
 order by p.proname;
 -- Achado esperado: as funções existentes usam `search_path=public`.
 -- Registrar como pendência se P4 der positivo — corrigir NÃO é escopo da E1.
+
+
+-- ############################################################################
+-- P6 — Asserção de OWNER (rodar DEPOIS da migration, junto da validação B3)
+-- ############################################################################
+-- SECURITY DEFINER executa com os privilégios do DONO. A migration não fixa o
+-- owner de propósito (ver comentário no topo dela) — em vez disso, confere.
+select p.proname,
+       p.proowner::regrole                      as dono,
+       (p.proowner::regrole::text = 'postgres') as dono_correto,
+       p.prosecdef                              as security_definer,
+       p.provolatile                            as volatilidade,
+       p.proconfig                              as config,
+       case
+         when p.proowner::regrole::text <> 'postgres'
+           then 'REPROVADO — dono diferente de postgres; a função roda com privilégios errados'
+         when p.prosecdef is not true
+           then 'REPROVADO — não é SECURITY DEFINER'
+         when p.provolatile <> 's'
+           then 'REPROVADO — não é STABLE'
+         when p.proconfig is null or not (p.proconfig @> array['search_path='])
+           then 'REVISAR — search_path não está vazio'
+         else 'OK'
+       end as veredito
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.proname = 'app_escopo_atual';
+-- ESPERADO: veredito = 'OK'

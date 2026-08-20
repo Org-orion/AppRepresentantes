@@ -12,6 +12,15 @@
 -- Esta função passa a ser a ÚNICA fonte de verdade sobre "o que este usuário
 -- pode ver". Nenhuma RPC deve reimplementar essa lógica.
 --
+-- ── APLICAÇÃO ATÔMICA ───────────────────────────────────────────────────────
+-- Todo o conteúdo executável está entre BEGIN e COMMIT. `create or replace
+-- function`, `comment on` e `revoke` são DDL transacional no PostgreSQL, então
+-- ou tudo entra, ou nada entra. Isso elimina o estado parcial mais perigoso:
+-- função criada e EXECUTE ainda concedido a PUBLIC por padrão.
+--
+-- No SQL Editor, SELECIONE TUDO antes do Run — ele executa apenas o trecho
+-- selecionado quando há seleção.
+--
 -- ── CONTRATO DE CONSUMO (obrigatório) ───────────────────────────────────────
 -- O chamador DEVE avaliar nesta ordem:
 --   1. tem_escopo = false  → devolver conjunto VAZIO. Fim.
@@ -22,15 +31,42 @@
 -- checar `is_global` e filtrar pelos arrays devolve NADA, não devolve TUDO.
 -- A falha, se houver, é para o lado seguro.
 --
+-- Os arrays saem ORDENADOS. Não é capricho: torna o retorno determinístico,
+-- permite comparar escopos entre execuções e entre usuários, e faz os testes de
+-- isolamento poderem afirmar igualdade sem depender da ordem de agregação.
+--
 -- ── SUPERFÍCIE DE ATAQUE ────────────────────────────────────────────────────
 -- A função NÃO recebe parâmetro nenhum. Não há entrada do cliente para validar
 -- ou desconfiar: o escopo vem inteiramente do JWT da sessão.
 --
--- `search_path = ''` (vazio) em vez de `public`: com SECURITY DEFINER, qualquer
--- schema pesquisável é vetor de sequestro de nome se algum papel não confiável
--- puder criar objetos nele. Com o caminho vazio, só `pg_catalog` (implícito)
--- resolve — e TODA referência a tabela está qualificada. `pg_temp` também deixa
--- de ser pesquisado, fechando o sequestro por objeto temporário.
+-- `search_path = ''` em vez de `public`. O que de fato protege esta função é,
+-- em ordem de importância:
+--   1. TODAS as tabelas referenciadas com schema completo (`public.…`);
+--   2. `auth.uid()` também qualificado;
+--   3. nenhum schema controlável por papel não confiável no `search_path`
+--      (auditado: PUBLIC, anon e authenticated não têm CREATE em `public`);
+--   4. built-ins (`coalesce`, `btrim`, `array_agg`…) resolvidos pelo PostgreSQL
+--      via `pg_catalog`, que é pesquisado implicitamente e não é sequestrável
+--      por quem não é superusuário.
+--
+-- CORREÇÃO DE UM COMENTÁRIO ANTERIOR: `search_path = ''` **não** remove
+-- `pg_temp` da resolução. O PostgreSQL continua consultando o schema temporário
+-- implicitamente para RELAÇÕES e TIPOS (nunca para funções e operadores). Quem
+-- fecha essa porta aqui é a qualificação completa das tabelas — não o caminho
+-- vazio por si só.
+--
+-- ── OWNER ───────────────────────────────────────────────────────────────────
+-- `SECURITY DEFINER` executa com os privilégios do DONO, então o dono importa.
+-- Esta migration NÃO fixa o owner com `alter function … owner to postgres`
+-- porque:
+--   • no SQL Editor do Supabase ela roda como `postgres`, e o `alter` seria
+--     um no-op;
+--   • se um dia for aplicada por outro papel, o `alter` FALHARIA (o papel
+--     precisaria ser membro de `postgres`), trocando um problema por outro;
+--   • o owner é VERIFICADO explicitamente na validação B3, o que transforma a
+--     suposição em fato conferido.
+-- Se a validação B3 mostrar dono diferente de `postgres`, PARE: a função estará
+-- rodando com privilégios errados.
 --
 -- ── O QUE ESTA MIGRATION **NÃO** FAZ ────────────────────────────────────────
 -- Não altera a view `public.concrem_pedidos_venda`, RLS, policy, privilégio de
@@ -41,12 +77,14 @@
 --   drop function if exists public.app_escopo_atual();
 -- ============================================================================
 
+begin;
+
 create or replace function public.app_escopo_atual()
 returns table (
   perfil          text,     -- perfil efetivo; 'sem_acesso' quando não há escopo válido
   is_global       boolean,  -- admin ou diretor_geral
-  representantes  text[],   -- códigos do ERP; VAZIO para perfis globais
-  grupos          text[],   -- grupos NORMALIZADOS; VAZIO para quem não é diretor
+  representantes  text[],   -- códigos do ERP, ORDENADOS; VAZIO para perfis globais
+  grupos          text[],   -- grupos NORMALIZADOS e ORDENADOS; VAZIO para quem não é diretor
   tem_escopo      boolean   -- false ⇒ o chamador DEVE devolver vazio
 )
 language plpgsql
@@ -134,9 +172,12 @@ begin
   -- Daqui para baixo: representante, operador ou diretor.
 
   -- Códigos de representante vinculados — valem para os três.
+  -- Ordenados para o retorno ser determinístico.
   -- NÃO filtra por `r.ativo` DE PROPÓSITO: preserva o comportamento de
   -- `app_my_rep_codes()`. Mudar isso é decisão de negócio — achado A14.
-  select coalesce(array_agg(distinct r.representante_erp), '{}')
+  select coalesce(
+           array_agg(distinct r.representante_erp order by r.representante_erp),
+           '{}')
     into v_reps
   from public.concremapprep_usuario_representantes ur
   join public.concremapprep_representantes r on r.id = ur.representante_id
@@ -151,13 +192,20 @@ begin
   -- Carregar grupos para representante ou operador seria AMPLIAR escopo em
   -- relação ao comportamento atual, por causa de cadastro residual em
   -- `user_client_groups`. Não se presume base limpa.
+  --
+  -- Nome nulo ou em branco é descartado: grupo inválido não pode virar escopo,
+  -- e um '' no array casaria com `grupo_cliente` vazio do ERP por acidente.
   if v_perfil = 'diretor' then
-    select coalesce(array_agg(distinct cg.normalized_name), '{}')
+    select coalesce(
+             array_agg(distinct cg.normalized_name order by cg.normalized_name),
+             '{}')
       into v_grupos
     from public.user_client_groups ucg
     join public.client_groups cg on cg.id = ucg.client_group_id
     where ucg.user_id = v_uid
-      and cg.is_active is true;
+      and cg.is_active is true
+      and cg.normalized_name is not null
+      and btrim(cg.normalized_name) <> '';
   end if;
 
   perfil         := v_perfil;
@@ -186,7 +234,8 @@ comment on function public.app_escopo_atual() is
 -- PRIVILÉGIOS — mínimo possível
 -- ----------------------------------------------------------------------------
 -- No PostgreSQL, EXECUTE é concedido a PUBLIC por padrão em toda função nova.
--- Revogar é OBRIGATÓRIO, não zelo extra.
+-- Revogar é OBRIGATÓRIO, não zelo extra — e é justamente por isso que está
+-- dentro da mesma transação da criação.
 --
 -- O frontend NÃO chama esta função: ela é infraestrutura interna. As RPCs de
 -- negócio serão `security definer` de dono `postgres` e a executam com os
@@ -199,3 +248,5 @@ comment on function public.app_escopo_atual() is
 revoke all on function public.app_escopo_atual() from public;
 revoke all on function public.app_escopo_atual() from anon;
 revoke all on function public.app_escopo_atual() from authenticated;
+
+commit;
