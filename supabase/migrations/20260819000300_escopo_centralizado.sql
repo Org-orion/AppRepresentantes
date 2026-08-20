@@ -12,18 +12,30 @@
 -- Esta função passa a ser a ÚNICA fonte de verdade sobre "o que este usuário
 -- pode ver". Nenhuma RPC deve reimplementar essa lógica.
 --
--- REGRA DE FALHA SEGURA
--- Ausência de vínculo NUNCA significa "sem filtro". Sem escopo → tem_escopo
--- falso → a RPC chamadora devolve conjunto vazio.
+-- ── CONTRATO DE CONSUMO (obrigatório) ───────────────────────────────────────
+-- O chamador DEVE avaliar nesta ordem:
+--   1. tem_escopo = false  → devolver conjunto VAZIO. Fim.
+--   2. is_global  = true   → NÃO filtrar por representante nem por grupo.
+--   3. senão               → filtrar por `representantes` E/OU `grupos`.
 --
--- SUPERFÍCIE DE ATAQUE
--- A função NÃO recebe parâmetro nenhum. Não há entrada do cliente para validar,
--- escapar ou desconfiar: o escopo vem inteiramente do JWT da sessão.
+-- Para perfis globais os arrays voltam VAZIOS de propósito: quem esquecer de
+-- checar `is_global` e filtrar pelos arrays devolve NADA, não devolve TUDO.
+-- A falha, se houver, é para o lado seguro.
 --
--- O QUE ESTA MIGRATION **NÃO** FAZ
--- Não altera a view `public.concrem_pedidos_venda`, não altera RLS, não altera
--- policy, não cria RPC de negócio, não mexe no frontend. As divergências A12,
--- A13 e A14 continuam valendo para a view — ver docs/PLANO-SANEAMENTO.md.
+-- ── SUPERFÍCIE DE ATAQUE ────────────────────────────────────────────────────
+-- A função NÃO recebe parâmetro nenhum. Não há entrada do cliente para validar
+-- ou desconfiar: o escopo vem inteiramente do JWT da sessão.
+--
+-- `search_path = ''` (vazio) em vez de `public`: com SECURITY DEFINER, qualquer
+-- schema pesquisável é vetor de sequestro de nome se algum papel não confiável
+-- puder criar objetos nele. Com o caminho vazio, só `pg_catalog` (implícito)
+-- resolve — e TODA referência a tabela está qualificada. `pg_temp` também deixa
+-- de ser pesquisado, fechando o sequestro por objeto temporário.
+--
+-- ── O QUE ESTA MIGRATION **NÃO** FAZ ────────────────────────────────────────
+-- Não altera a view `public.concrem_pedidos_venda`, RLS, policy, privilégio de
+-- schema, RPC de negócio ou frontend. As divergências A12, A13 e A14 continuam
+-- valendo para a view — ver docs/PLANO-SANEAMENTO.md.
 --
 -- ROLLBACK
 --   drop function if exists public.app_escopo_atual();
@@ -31,16 +43,16 @@
 
 create or replace function public.app_escopo_atual()
 returns table (
-  perfil          text,     -- perfil efetivo; 'sem_acesso' quando não há usuário válido
+  perfil          text,     -- perfil efetivo; 'sem_acesso' quando não há escopo válido
   is_global       boolean,  -- admin ou diretor_geral
-  representantes  text[],   -- códigos do ERP vinculados (vazio quando não houver)
-  grupos          text[],   -- nomes NORMALIZADOS dos grupos (upper + btrim)
+  representantes  text[],   -- códigos do ERP; VAZIO para perfis globais
+  grupos          text[],   -- grupos NORMALIZADOS; VAZIO para quem não é diretor
   tem_escopo      boolean   -- false ⇒ o chamador DEVE devolver vazio
 )
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
   v_uid    uuid := auth.uid();
@@ -65,19 +77,18 @@ begin
   -- A coluna `perfil` DECIDE. Os flags `admin`/`operador` só são consultados
   -- quando `perfil` é NULL ou string vazia — nunca competem com ela.
   --
-  --   perfil='diretor'  + admin=true   → 'diretor'  (a coluna vence)
-  --   perfil='admin'    + admin=false  → 'admin'    (a coluna vence)
-  --   perfil=NULL       + admin=true   → 'admin'    (fallback de migração)
-  --   perfil=NULL       + operador=true→ 'operador' (fallback de migração)
-  --   perfil=NULL       + nenhum flag  → 'representante'
+  --   perfil='diretor'  + admin=true    → 'diretor'  (a coluna vence)
+  --   perfil='admin'    + admin=false   → 'admin'    (a coluna vence)
+  --   perfil=NULL       + admin=true    → 'admin'    (fallback de migração)
+  --   perfil=NULL       + operador=true → 'operador' (fallback de migração)
+  --   perfil=NULL       + nenhum flag   → 'representante'
   --
-  -- É exatamente `perfilDoUsuario` de src/constants/perfis.ts, que é a fonte de
-  -- verdade do aplicativo e está coberta por teste automatizado.
-  -- DIFERE de `app_is_admin()`, que lê só o flag — ver achado A12.
+  -- É exatamente `perfilDoUsuario` de src/constants/perfis.ts, fonte de verdade
+  -- do aplicativo e coberta por teste. DIFERE de `app_is_admin()`, que lê só o
+  -- flag — achado A12.
   --
   -- `u.ativo is true` é deliberado (achado A13): usuário desativado no portal
-  -- não tem escopo, qualquer que seja o perfil, o flag, os representantes ou os
-  -- grupos. `ativo` é NOT NULL, então `is true` cobre todos os casos possíveis.
+  -- não tem escopo, qualquer que seja perfil, flag, representante ou grupo.
   select coalesce(
            nullif(btrim(u.perfil), ''),
            case when u.admin    then 'admin'
@@ -89,16 +100,42 @@ begin
   where u.id = v_uid
     and u.ativo is true;
 
-  -- Usuário inexistente OU inativo → nenhuma linha → v_perfil nulo → sem escopo.
+  -- Usuário inexistente OU inativo → nenhuma linha → sem escopo.
   if v_perfil is null then
     return next;
     return;
   end if;
 
-  -- ── REPRESENTANTES VINCULADOS ────────────────────────────────────────────
-  -- NÃO filtra por `r.ativo` DE PROPÓSITO: preserva o comportamento atual de
-  -- `app_my_rep_codes()`. Se representante inativo deve perder escopo, é
-  -- decisão de negócio — achado A14, registrado e não alterado aqui.
+  -- ── WHITELIST DE PERFIS (fail-closed) ────────────────────────────────────
+  -- Perfil não vazio porém desconhecido NÃO recebe escopo, mesmo tendo
+  -- representantes ou grupos vinculados. Hoje a constraint
+  -- `usuarios_perfil_chk` já impede valores fora da lista, mas a whitelist é
+  -- defesa em profundidade: se a constraint for relaxada, ou se um perfil novo
+  -- for adicionado ao banco sem atualizar esta função, o padrão é NEGAR.
+  if v_perfil not in ('representante', 'operador', 'admin', 'diretor', 'diretor_geral') then
+    perfil := 'sem_acesso';
+    return next;
+    return;
+  end if;
+
+  -- ── ESCOPO POR PERFIL ────────────────────────────────────────────────────
+  -- Cada perfil carrega SOMENTE o que pode usar. Vínculo residual em tabela que
+  -- o perfil não usa é IGNORADO — não vira escopo por acidente.
+  if v_perfil in ('admin', 'diretor_geral') then
+    -- Global: não filtra por nada. Arrays ficam vazios de propósito (ver
+    -- CONTRATO DE CONSUMO no topo).
+    perfil     := v_perfil;
+    is_global  := true;
+    tem_escopo := true;
+    return next;
+    return;
+  end if;
+
+  -- Daqui para baixo: representante, operador ou diretor.
+
+  -- Códigos de representante vinculados — valem para os três.
+  -- NÃO filtra por `r.ativo` DE PROPÓSITO: preserva o comportamento de
+  -- `app_my_rep_codes()`. Mudar isso é decisão de negócio — achado A14.
   select coalesce(array_agg(distinct r.representante_erp), '{}')
     into v_reps
   from public.concremapprep_usuario_representantes ur
@@ -107,37 +144,34 @@ begin
     and r.representante_erp is not null
     and btrim(r.representante_erp) <> '';
 
-  -- ── GRUPOS DO DIRETOR ────────────────────────────────────────────────────
-  -- Nomes já NORMALIZADOS (upper + btrim), como em client_groups.normalized_name.
-  -- Quem consumir deve normalizar `grupo_cliente` do mesmo jeito — e usando
-  -- funções BUILT-IN (upper/btrim/coalesce), nunca `app_norm_grupo()`, que é
-  -- local e quebraria o pushdown do FDW.
-  -- Só grupos ativos.
-  select coalesce(array_agg(distinct cg.normalized_name), '{}')
-    into v_grupos
-  from public.user_client_groups ucg
-  join public.client_groups cg on cg.id = ucg.client_group_id
-  where ucg.user_id = v_uid
-    and cg.is_active is true;
+  -- Grupos: SOMENTE para diretor.
+  --
+  -- A view pública já faz assim — a cláusula de grupo é
+  -- `app_perfil() = 'diretor' AND app_diretor_ve_grupo(grupo_cliente)`.
+  -- Carregar grupos para representante ou operador seria AMPLIAR escopo em
+  -- relação ao comportamento atual, por causa de cadastro residual em
+  -- `user_client_groups`. Não se presume base limpa.
+  if v_perfil = 'diretor' then
+    select coalesce(array_agg(distinct cg.normalized_name), '{}')
+      into v_grupos
+    from public.user_client_groups ucg
+    join public.client_groups cg on cg.id = ucg.client_group_id
+    where ucg.user_id = v_uid
+      and cg.is_active is true;
+  end if;
 
-  -- ── RESULTADO ────────────────────────────────────────────────────────────
   perfil         := v_perfil;
-  is_global      := v_perfil in ('admin', 'diretor_geral');
+  is_global      := false;
   representantes := v_reps;
   grupos         := v_grupos;
 
-  -- Tem escopo quem enxerga tudo, quem tem representante, ou quem tem grupo.
-  --
   -- Comportamento por perfil:
-  --   admin / diretor_geral → is_global=true,  tem_escopo=true
-  --   diretor               → grupos vinculados; sem grupo e sem rep ⇒ VAZIO
-  --   representante         → seus rep codes;   sem rep            ⇒ VAZIO
-  --   operador              → tratado como representante (decisão D3:
-  --                           operador sem rep codes vê 0 pedidos) ⇒ VAZIO
+  --   diretor       → grupos ativos + rep codes próprios; sem nenhum ⇒ VAZIO
+  --   representante → só rep codes;  sem rep ⇒ VAZIO (grupos sempre {})
+  --   operador      → idem representante (decisão D3: sem rep codes ⇒ 0 pedidos)
   --
   -- Em NENHUM caso a ausência de vínculo produz acesso global.
-  tem_escopo := is_global
-                or coalesce(array_length(v_reps, 1), 0) > 0
+  tem_escopo := coalesce(array_length(v_reps, 1), 0) > 0
                 or coalesce(array_length(v_grupos, 1), 0) > 0;
 
   return next;
@@ -146,7 +180,7 @@ $$;
 
 comment on function public.app_escopo_atual() is
   'Fonte única do escopo do usuário autenticado. Nenhuma RPC deve reimplementar esta lógica. '
-  'tem_escopo=false obriga o chamador a devolver conjunto vazio.';
+  'Ordem de consumo: tem_escopo=false => vazio; is_global=true => sem filtro; senão filtra por arrays.';
 
 -- ============================================================================
 -- PRIVILÉGIOS — mínimo possível
