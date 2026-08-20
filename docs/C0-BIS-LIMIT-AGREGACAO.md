@@ -348,3 +348,89 @@ hipótese em decisão.
 - **View:** as condições locais são exatamente o impedimento? (A4 × A6) ______
 - **RPC:** há evidência técnica de que melhora? ______
 - **Arquitetura:** `Frontend → RPC/paginação → FDW → ERP` × `ERP → cache → frontend` ______
+
+
+---
+
+# RESULTADO C0-bis — executado em 2026-08-19
+
+## Parte A — `LIMIT` e `ORDER BY`
+
+| Teste | `Remote SQL` | `LIMIT` remoto | `ORDER BY` remoto | Nós locais |
+|---|---|---|---|---|
+| L1 | `… LIMIT 50::bigint` | ✅ **sim** | — | nenhum |
+| L2 | `… ORDER BY data_emissao DESC NULLS FIRST` | — | ✅ **sim** | nenhum |
+| L3 | `… ORDER BY … LIMIT 50::bigint` | ✅ **sim** | ✅ **sim** | nenhum |
+| L4 | `… WHERE (id_nota_conf = ANY …)` | ❌ não | — | `Limit` |
+| L5 | `… WHERE (id_nota_conf = ANY …)` | ❌ não | ❌ não | `Limit` → `Sort` |
+| L6 (`enable_sort=off`) | `… WHERE … ORDER BY data_emissao DESC NULLS FIRST` | ❌ não | ✅ **sim** | `Limit` |
+
+### H1 — **DERRUBADA**
+
+`LIMIT 50::bigint` aparece no `Remote SQL` de L1 e L3. **O `postgres_fdw` desta instalação (PG 17.6)
+empurra `LIMIT`.** A afirmação que fiz no C0 estava errada.
+
+### H2 — **CONFIRMADA, com evidência do plano**
+
+L6 mostra `ORDER BY` no `Remote SQL` **e** o desaparecimento do nó `Sort`. Logo, **o caminho ordenado
+remoto existe**; em L5 o planejador simplesmente não o escolheu.
+
+O motivo está nos custos: L5 = `112.24`, L6 = `114.46`. Pelo modelo dele, ordenar local é mais barato.
+
+### Por que L4/L5/L6 não empurram `LIMIT` — a causa raiz
+
+Compare as estimativas:
+
+| | Estimativa de linhas |
+|---|---|
+| L1/L3 (sem `WHERE`) | `rows=50` / `rows=90` |
+| L4/L5/L6 (com `WHERE`) | **`rows=4`** |
+
+Com `WHERE`, o planejador estima **4 linhas**. Sendo 4 < 50, o `LIMIT 50` **não restringe nada** — não há
+o que ganhar empurrando. Pela mesma razão, ordenar 4 linhas localmente parece grátis.
+
+**Esse `rows=4` é ficção.** Vem de `reltuples = -1` (nunca houve `ANALYZE` nas foreign tables) somado à
+seletividade padrão de `= ANY` com 4 valores. Na realidade são ~7.600 linhas.
+
+> **Causa raiz do C0-bis:** não é limitação do driver, nem da view, nem do plano Supabase.
+> É **ausência de estatísticas**, que faz o planejador subestimar o resultado e desistir de empurrar
+> `ORDER BY` e `LIMIT` — justamente nas consultas que **têm** filtro, que são todas as do app.
+
+## Parte B — Agregações
+
+| Teste | Agregação | `Remote SQL` |
+|---|---|---|
+| A1 | ✅ **remota** | `SELECT count(*) FROM … WHERE (id_nota_conf = ANY …)` |
+| A2 | ✅ **remota** | `SELECT sum(total_pedido_venda) FROM … WHERE …` |
+| A3 | ✅ **remota** | `SELECT representante, count(*), sum(…) FROM … WHERE … GROUP BY 1` |
+| A4 | ✅ **remota** | `SELECT count(*), sum(…) FROM … WHERE … AND (representante = ANY (…::text[]))` |
+| A5 | ❌ **local** | `SELECT data_emissao, total_pedido_venda FROM … WHERE …` + `GroupAggregate` e `Sort` locais |
+| A6 | ❌ **local** | `SELECT representante FROM … WHERE …` + `Aggregate` local, `Filter: app_is_admin() OR …` |
+
+A1–A3 aparecem como `Foreign Scan` com `Relations: Aggregate on (erp.concrem_pedidos_venda)` — forma
+canônica de agregação empurrada.
+
+### A4 × A6 — o par decisivo
+
+| | Escopo | Agregação | O que atravessa o FDW |
+|---|---|---|---|
+| **A4** | array constante | ✅ **remota** | **1 linha** (o resultado) |
+| **A6** | `app_is_admin() OR representante IN (select app_my_rep_codes())` | ❌ local | **1 linha por pedido** |
+
+**Está provado:** a condição local **é** o impedimento. Resolver o escopo em array constante antes da
+consulta devolve a agregação ao ERP.
+
+> Nota de execução: o A4 rodou com os literais `<COD_REP_1>`/`<COD_REP_2>` sem substituição. Isso **não**
+> altera a conclusão — o que se observa é a forma `representante = ANY (…::text[])` descer, não os valores.
+
+### A5 — o que exatamente ficou local
+
+Tudo desceu, **menos o agrupamento**. O `Remote SQL` leva o `WHERE` completo, mas traz
+`data_emissao, total_pedido_venda` linha a linha; `GroupAggregate` e `Sort` rodam no Portal.
+
+**Causa provável, visível no próprio plano:** `date_trunc('month', (data_emissao)::timestamp with time zone)`.
+O PostgreSQL escolheu a variante **`timestamptz`**, que é **`STABLE`** (depende do `TimeZone` da sessão) —
+e o `postgres_fdw` não empurra expressão que possa avaliar diferente no remoto.
+
+**Hipótese de correção, ainda NÃO MEDIDA:** forçar a variante `IMMUTABLE` com cast explícito —
+`date_trunc('month', data_emissao::timestamp)`. Precisa de um `EXPLAIN` próprio antes de virar decisão.
