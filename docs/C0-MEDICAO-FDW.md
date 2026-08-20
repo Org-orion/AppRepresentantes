@@ -233,7 +233,11 @@ Com isso eu preencho a tabela abaixo e fecho a conclusão.
 | F — count | | | | | |
 | G — foreign table direta | | | | | |
 
-### Conclusão (a preencher com as evidências)
+### Conclusão — ver RESULTADO abaixo
+
+_(seção original mantida como histórico)_
+
+#### (a preencher com as evidências)
 
 > O FDW **está** / **não está** fazendo predicate pushdown.
 > Evidência decisiva: ______________________________________
@@ -244,3 +248,99 @@ Com isso eu preencho a tabela abaixo e fecho a conclusão.
   sem reconciliação. Cache local vira opcional.
 - **Sem pushdown:** cada interação de cada usuário varre a tabela remota inteira; piora linearmente com
   usuários simultâneos. Cache local deixa de ser preferência e vira necessidade.
+
+
+---
+
+# RESULTADO — executado em 2026-08-19
+
+## Evidências por caso
+
+| Caso | Filtros no `Remote SQL` | Filtros locais | `ORDER BY` remoto | `LIMIT` remoto | Agregação remota |
+|---|---|---|---|---|---|
+| A — sem filtro | *(nenhum)* | disjunção de escopo | — | — | — |
+| B — `id_nota_conf` | `id_nota_conf = ANY('{307,309,613,665}')` ✅ | disjunção de escopo | — | — | — |
+| C — representante | *(saída truncada na coleta)* | — | — | — | — |
+| D — período | `data_emissao >=` **e** `<=` **e** `id_nota_conf` ✅ | disjunção de escopo | — | — | — |
+| E — rep+período (view) | `data_emissao >=`, `<=`, `representante =`, `id_nota_conf` ✅ | disjunção de escopo | ❌ `Sort` local | ❌ `Limit` local | — |
+| F — `count(*)` | `id_nota_conf` ✅ | disjunção de escopo | — | — | ❌ `Aggregate` local |
+| G — rep+período (foreign table) | **idêntico ao E** ✅ | *(nenhum)* | ❌ `Sort` local | ❌ `Limit` local | — |
+
+Estatísticas: `reltuples = -1` em todas as foreign tables → nunca houve `ANALYZE`. Estimativas de `rows`
+desprezadas, como previsto.
+
+Opções das views: `concremprodutos_produtos` é a **única** com `security_barrier=true` — exatamente a
+única que a migration `20260706000100` **não** recriou. Confirma o mecanismo do achado **A10**.
+
+## Conclusão
+
+**O `postgres_fdw` FAZ predicate pushdown dos filtros de negócio.** `id_nota_conf`, `data_emissao` e
+`representante` aparecem no `WHERE` do `Remote SQL` em todos os casos em que existem — **e a view não
+interfere**: o `Remote SQL` de E é idêntico ao de G.
+
+**A hipótese da camada 3 está DERRUBADA.** Ela dizia que a view `security_barrier` com funções locais
+impediria o pushdown. Errado em dois níveis: a barreira nem existe mais (A10), e o pushdown dos filtros
+funciona de qualquer forma.
+
+## O que realmente fica local — cenário 4, pushdown parcial
+
+1. **A disjunção de escopo** (`app_is_admin() OR … OR representante IN (app_my_rep_codes())`), como
+   esperado: são funções locais.
+2. **`ORDER BY` e `LIMIT`** — locais **inclusive no caso G**, sem view nenhuma. O `postgres_fdw`
+   **não implementa pushdown de `LIMIT`**; e o `ORDER BY` só desce quando o planejador consegue custear a
+   ordenação remota, o que exige `use_remote_estimate` (desligado aqui).
+   **Consequência:** `LIMIT 50` **não** faz o ERP devolver 50 linhas. O ERP devolve **tudo que casa com o
+   `WHERE`**; o Portal ordena e corta.
+3. **A agregação** — no caso F, `count(*)` é calculado no Portal. O `Remote SQL` traz
+   `representante, grupo_cliente` de **todas** as linhas que casam com `id_nota_conf`. A poda de colunas
+   funciona (só duas colunas), mas a contagem custa **uma linha trafegada por pedido**.
+
+## A pergunta que importava: o ERP devolve mais linhas do que o necessário?
+
+**Depende de a consulta trazer o filtro de negócio explícito.**
+
+| Situação | O que atravessa o FDW |
+|---|---|
+| Representante navegando a lista | `services/scope.ts` já aplica `.in('representante', repCodes)` → **vira predicado empurrável** → o ERP devolve só os pedidos dele ✅ |
+| Diretor | `.in('grupo_cliente', grupos)` → mesmo caso ✅ |
+| Admin sem filtro | sem predicado → **todas** as ~7.600 linhas |
+| Qualquer `count(*)` | **todas** as linhas que casam, sempre |
+| Dashboard, carteira, performance | sem filtro de data no SQL → **todas** |
+
+Descoberta relevante: **o escopo replicado em `services/scope.ts` não é só defesa em profundidade — é o
+que salva o pushdown.** Sem ele, o filtro de escopo ficaria apenas na view, seria local, e o ERP
+devolveria tudo para o Portal peneirar.
+
+## `fetch_size` — reavaliado
+
+`fetch_size` **não é o problema**. Ele só importa proporcionalmente ao número de linhas que atravessam o
+FDW, e o pushdown já reduz isso nos caminhos filtrados. Nos caminhos que trafegam 7.600 linhas, o
+conserto certo é **parar de trafegar 7.600 linhas**, não trafegá-las em menos viagens.
+
+Continua sendo um ajuste válido para o **futuro sync ou agregações que precisem de volume**, mas como
+otimização secundária — nunca como correção.
+
+## Impacto na arquitetura
+
+**O cache local deixa de ser necessário.** O FDW faz seu trabalho nos filtros. O que falta é o Portal
+**pedir direito**: paginação real, filtro de data em SQL e agregação que não traga linha por linha.
+
+**Mas há um caminho melhor para os agregados, e ele nasce desta medição.** Como a agregação só fica local
+por causa da disjunção de escopo, uma função `security definer` pode **resolver o escopo antes** e
+consultar `erp.*` com predicados puramente empurráveis:
+
+```sql
+-- esboço, NÃO aplicado
+create function app_pedidos_indicadores(...) returns ... as $$
+declare v_codes text[] := array(select app_my_rep_codes());
+begin
+  return query
+  select count(*), sum(total_pedido_venda)
+    from erp.concrem_pedidos_venda
+   where id_nota_conf = any (array[307,309,613,665])
+     and (v_admin or representante = any (v_codes));
+end $$;
+```
+
+Com o escopo virando **array constante**, some o obstáculo à agregação remota — e o `postgres_fdw` pode
+empurrar o `count`/`sum` para o ERP. **Precisa ser medido** (C0-bis) antes de virar plano.
