@@ -101,6 +101,22 @@ empurradas podem ordenar diferente do esperado. Não afeta os testes deste rotei
 
 ---
 
+## PASSO A — Códigos reais de representante (tabela local, não toca no ERP)
+
+```sql
+select representante_erp
+from concremapprep_representantes
+where ativo is true
+order by representante_erp
+limit 2;
+```
+
+`representante_erp` é, por regra de negócio do projeto, **idêntico** a
+`concrem_pedidos_venda.representante` — é a fonte certa. Use o 1º valor em `<COD_REP_1>` e o 2º em
+`<COD_REP_2>`. Eles aparecem **somente no teste A4**.
+
+---
+
 ## PARTE A — `LIMIT` e `ORDER BY`
 
 ### L1 — `LIMIT` sozinho
@@ -153,13 +169,28 @@ Só desabilita métodos locais **na sessão**, para ver se existe caminho ordena
 no banco e vale só para esta consulta.
 
 ```sql
+begin;
+
 set local enable_sort = off;
+
 explain (verbose, costs, format text)
-select * from erp.concrem_pedidos_venda
+select *
+from erp.concrem_pedidos_venda
 where id_nota_conf in (307,309,613,665)
 order by data_emissao desc
 limit 50;
-reset enable_sort;
+
+rollback;
+```
+
+**Se a saída vier vazia**, o editor exibiu o resultado do último comando (`rollback`, que não devolve
+linhas). Rode de novo trocando `rollback;` por `commit;` — **`set local` é descartado no fim da
+transação nos dois casos**, e o `EXPLAIN` não alterou nada para haver o que confirmar.
+
+**Confirmação de que nada persistiu**, em execução separada:
+
+```sql
+show enable_sort;   -- esperado: on
 ```
 
 **Por que L6 importa:** se com `enable_sort = off` aparecer `ORDER BY` no `Remote SQL`, então o caminho
