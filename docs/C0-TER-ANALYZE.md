@@ -447,9 +447,19 @@ Estimativa esperada para `IN (307,309,613,665)`: `0,495 × 31.949 ≈ **15.813 l
 
 Antes o planejador estimava **4**. O erro era de ~3.900×.
 
-**Coerência com o app:** a Central de Pedidos mostra 7.600, mas ela também exclui `REP_EXCLUIDOS`
-(vendas diretas). A diferença de ~8.200 linhas é compatível com o volume de um cliente de varejo —
-os dois números convivem.
+**Divergência com o app — HIPÓTESE NÃO MEDIDA.** A Central de Pedidos mostra **7.600**; a estimativa
+estatística dá **~15.813**. Levantei que a diferença viria dos `REP_EXCLUIDOS` (vendas diretas), mas
+**isso não foi medido** — apresentei como explicação e era só hipótese.
+
+Outras explicações possíveis, igualmente não descartadas:
+
+- erro da própria estimativa (amostra de ~6.000 linhas, alvo 20);
+- a contagem do app sofrer algum filtro adicional que não mapeei;
+- a coluna `id_nota_conf` ter nulos ou valores fora dos quatro que o app aceita.
+
+**Como medir barato, depois:** dois `count(*)` — um só com `id_nota_conf`, outro somando a exclusão de
+representante. Como o C0-bis provou que `count` é empurrado, cada um custa **uma linha** de resposta.
+Fica registrado como pendência, fora do escopo da rodada atual (que é só `EXPLAIN`).
 
 ### `data_emissao`
 
