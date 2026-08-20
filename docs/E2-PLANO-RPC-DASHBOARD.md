@@ -29,54 +29,37 @@ selecionar um ano antigo devolve `R$ 0,00` porque o período é filtrado no clie
 
 ## ⚠️ E2-0 — Uma medição ANTES de escrever a RPC
 
-Três predicados que a RPC precisa **ainda não foram medidos**. Depois de errar três vezes nesta
-investigação por raciocinar em vez de medir, eles vão para o `EXPLAIN` primeiro.
+Sete testes em `supabase/tests/e2_medicao_pushdown.sql`, **só `EXPLAIN`**, com valores reais e sem
+placeholder. Depois de errar três vezes nesta investigação por raciocinar em vez de medir, os predicados
+novos vão para o `EXPLAIN` primeiro.
 
-### N1 — normalização de grupo é empurrável?
+| # | O que prova |
+|---|---|
+| N1 | normalização de grupo com built-ins é empurrável — **a que pode derrubar o ramo do diretor** |
+| N2 | `OR` entre dois predicados de array é empurrável |
+| N3 | exclusão de vendas diretas é empurrável |
+| N4 | ramo C **completo**, com literais |
+| N5 | ramo C **completo**, parametrizado com `force_generic_plan` |
+| N6 | ramo global com `p_representante`, parametrizado |
+| N7 | ramo B, parametrizado |
 
-`app_escopo_atual()` devolve grupos **normalizados** (`upper` + `btrim`). O ERP guarda
-`grupo_cliente` cru. Para casar, é preciso normalizar do lado do ERP — e **só com built-ins**, porque
-`app_norm_grupo()` é função local e quebraria o pushdown (medido em A6).
+**N4 e N5 são os decisivos.** Se N1 falhar, o desenho do ramo do diretor muda antes de existir código.
 
-```sql
-explain (verbose, costs, format text)
-select data_emissao, count(*), sum(total_pedido_venda)
-from erp.concrem_pedidos_venda v
-where v.id_nota_conf = any (array[307,309,613,665])
-  and coalesce(nullif(upper(btrim(v.grupo_cliente)), ''), 'SEM GRUPO') = any (array['DAG COMERCIO'])
-group by v.data_emissao;
-```
+### Regras de negócio conferidas no código (2026-08-19)
 
-**Confirma se:** `Relations: Aggregate on (…)` e o `Remote SQL` contiver a expressão **e** o `GROUP BY`.
-**Se não empurrar**, o caminho do diretor precisa de outro desenho — e a RPC não deve ser escrita antes
-disso.
+| Regra | Origem | Valores |
+|---|---|---|
+| `id_nota_conf` | `src/constants/orderFilters.ts:11` | **`[307, 309, 613, 665]`** — exatamente quatro |
+| `REP_EXCLUIDOS` | `src/services/pedidosVenda.ts:17` | **`['40001498 - JANDERSON LEROY MERLIN']`** — um único valor |
 
-### N2 — `OR` entre dois predicados de array é empurrável?
+Confirmado por varredura: **não há segunda lista de exclusão** no projeto. `REP_EXCLUIDOS` é consumido
+por `pedidosVenda.ts` (4×), `dashboard.ts`, `acompanhamento.ts`, `financeiro.ts` e `performance.ts` (2×);
+`VALID_ID_NOTA_CONF` pelos mesmos, mais `carteira.ts` e `clientGroups.ts`.
 
-O diretor enxerga **grupos vinculados OU seus próprios rep codes** (é o que a view faz hoje).
-
-```sql
-explain (verbose, costs, format text)
-select data_emissao, count(*), sum(total_pedido_venda)
-from erp.concrem_pedidos_venda v
-where v.id_nota_conf = any (array[307,309,613,665])
-  and ( v.representante = any (array['<COD_REP_1>'])
-        or coalesce(nullif(upper(btrim(v.grupo_cliente)), ''), 'SEM GRUPO') = any (array['DAG COMERCIO']) )
-group by v.data_emissao;
-```
-
-### N3 — a exclusão de vendas diretas é empurrável?
-
-```sql
-explain (verbose, costs, format text)
-select data_emissao, count(*), sum(total_pedido_venda)
-from erp.concrem_pedidos_venda v
-where v.id_nota_conf = any (array[307,309,613,665])
-  and v.representante <> all (array['40001498 - JANDERSON LEROY MERLIN'])
-group by v.data_emissao;
-```
-
-> **Só depois de N1, N2 e N3 confirmarem é que a RPC deve ser escrita.** Se algum falhar, o desenho muda.
+**Equivalência SQL usada nos testes:** `representante <> ALL (array[...])` é idêntico a
+`NOT (representante = ANY (array[...]))`, que é o que o PostgREST gera a partir de
+`.not('representante','in',…)`. Mesma semântica, **inclusive para NULL** — em ambos o resultado é NULL e
+a linha é descartada (decisão D-1).
 
 ---
 

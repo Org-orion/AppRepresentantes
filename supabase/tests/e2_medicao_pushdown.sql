@@ -2,36 +2,44 @@
 -- E2-0 — Medição de pushdown dos predicados que a RPC vai usar
 -- ----------------------------------------------------------------------------
 -- SOMENTE `EXPLAIN`, sem `ANALYZE`. Nada é criado, alterado ou persistido.
--- `PREPARE` (N5) vive só na sessão e é liberado com `deallocate`.
+-- Os blocos com `PREPARE` rodam em transação e terminam em `ROLLBACK`.
 --
 -- Objetivo: provar, ANTES de escrever a RPC, que cada predicado do desenho
 -- desce ao ERP. Se algum falhar, o desenho muda antes de existir código.
 --
--- Rode como `postgres` no SQL Editor.
+-- Rode como `postgres` no SQL Editor. Sem placeholders: todos os valores são
+-- reais e podem ser executados como estão.
 -- ============================================================================
-
-
--- ############################################################################
--- PASSO 0 — Valores reais para substituir nos testes (somente leitura, local)
--- ############################################################################
-
--- 0.1 — Códigos de representante (tabela local do Portal)
-select representante_erp
-from public.concremapprep_representantes
-where ativo is true
-order by representante_erp
-limit 5;
--- → <COD_REP_1>, <COD_REP_2>
-
--- 0.2 — Grupos normalizados existentes (tabela local do Portal)
-select normalized_name
-from public.client_groups
-where is_active is true
-order by normalized_name;
--- → <GRUPO_1>  (ex.: o grupo do diretor de teste)
-
--- Datas: use um intervalo com pedidos, formato AAAA-MM-DD.
--- → <DATA_INICIO>, <DATA_FIM>
+--
+-- REGRAS DE NEGÓCIO REPRODUZIDAS (conferidas no código em 2026-08-19)
+--
+--   id_nota_conf → src/constants/orderFilters.ts:11
+--     export const VALID_ID_NOTA_CONF: number[] = [307, 309, 613, 665];
+--     Aplicado como `.in('id_nota_conf', VALID_ID_NOTA_CONF)` → `IN (...)`.
+--     SÃO EXATAMENTE ESSES QUATRO VALORES. Não há outros.
+--
+--   REP_EXCLUIDOS → src/services/pedidosVenda.ts:17
+--     export const REP_EXCLUIDOS = ['40001498 - JANDERSON LEROY MERLIN'];
+--     UM ÚNICO VALOR. Confirmado: não há segunda lista de exclusão no projeto.
+--     Aplicado como `.not('representante','in', '("...")')`, que o PostgREST
+--     traduz para `NOT (representante IN (...))`.
+--
+--     Equivalência usada aqui: `representante <> ALL (array[...])` é idêntico a
+--     `NOT (representante = ANY (array[...]))`. Mesma semântica, inclusive para
+--     NULL — que em ambos os casos resulta em NULL e DESCARTA a linha.
+--     É o comportamento atual, preservado por decisão D-1.
+--
+--   Consumidores de REP_EXCLUIDOS: pedidosVenda.ts (4×), dashboard.ts,
+--   acompanhamento.ts, financeiro.ts, performance.ts (2×).
+--   Consumidores de VALID_ID_NOTA_CONF: os mesmos, mais carteira.ts e
+--   clientGroups.ts.
+--
+-- VALORES DE TESTE
+--   REP 1  = '10008082 - DANILO AUGUSTO REHNEIN'
+--   REP 2  = '10006795 - VALARINI REPRESENTACOES DE MOVEIS LTDA.'
+--   GRUPO  = 'DAG COMERCIO'
+--   PERÍODO = 2026-01-01 a 2026-08-20
+-- ============================================================================
 
 
 -- ############################################################################
@@ -45,101 +53,101 @@ order by normalized_name;
 --
 --  FALHA quando aparece QUALQUER uma destas:
 --    • nó `HashAggregate` ou `GroupAggregate` ACIMA do `Foreign Scan`
---    • nó `Sort` acima do `Foreign Scan` para agrupar
---    • `Filter:` acima do `Foreign Scan` com um predicado que deveria ter descido
+--    • nó `Sort` acima do `Foreign Scan` servindo para AGRUPAR
+--    • `Filter:` acima do `Foreign Scan` com predicado que deveria ter descido
 --    • `Remote SQL` trazendo COLUNAS CRUAS (ex.: `SELECT data_emissao,
 --      total_pedido_venda FROM …`) em vez do agregado
 --
---  A linha `Relations: Aggregate on (...)` é o sinal decisivo: ela só aparece
+--  A linha `Relations: Aggregate on (...)` é o sinal decisivo: só aparece
 --  quando o PostgreSQL empurrou a agregação inteira.
+--
+--  Nos testes com `order by` (N4–N7), um nó `Sort` ACIMA do agregado remoto é
+--  aceitável: ordena ~300 linhas JÁ AGREGADAS. O que não pode ficar local é a
+--  AGREGAÇÃO.
 
 
 -- ############################################################################
 -- N1 — Normalização de grupo com built-ins é empurrável?
 -- ############################################################################
--- Por quê: `app_escopo_atual()` devolve grupos NORMALIZADOS (upper+btrim), e o
--- ERP guarda `grupo_cliente` cru. Casar exige normalizar do lado do ERP usando
--- SÓ built-ins — `app_norm_grupo()` é função local e derrubaria o pushdown (A6).
--- Este é o teste que pode derrubar o desenho do ramo do diretor.
+-- `app_escopo_atual()` devolve grupos NORMALIZADOS (upper+btrim); o ERP guarda
+-- `grupo_cliente` cru. Casar exige normalizar do lado do ERP com SÓ built-ins —
+-- `app_norm_grupo()` é função local e derrubaria o pushdown (medido em A6).
+-- ESTE É O TESTE QUE PODE DERRUBAR O DESENHO DO RAMO DO DIRETOR.
 explain (verbose, costs, format text)
 select v.data_emissao, count(*), sum(v.total_pedido_venda)
 from erp.concrem_pedidos_venda v
 where v.id_nota_conf = any (array[307,309,613,665])
-  and coalesce(nullif(upper(btrim(v.grupo_cliente)), ''), 'SEM GRUPO') = any (array['<GRUPO_1>'])
+  and coalesce(nullif(upper(btrim(v.grupo_cliente)), ''), 'SEM GRUPO') = any (array['DAG COMERCIO'])
 group by v.data_emissao;
--- PASSA: `Relations: Aggregate on (...)` + a expressão `CASE`/`coalesce` dentro
---        do `Remote SQL`, junto de `GROUP BY`.
--- FALHA: agregação local, ou a expressão aparecendo em `Filter:` acima do scan.
+-- PASSA: `Relations: Aggregate on (...)` + a expressão de normalização e o
+--        `GROUP BY` dentro do `Remote SQL`.
+-- FALHA: agregação local, ou a expressão em `Filter:` acima do `Foreign Scan`.
 
 
 -- ############################################################################
 -- N2 — `OR` entre dois predicados de array é empurrável?
 -- ############################################################################
--- Por quê: o diretor enxerga grupos vinculados OU seus próprios rep codes — é o
--- que a view faz hoje. Se o `OR` não descer, o ramo C precisa de outro desenho.
+-- O diretor enxerga grupos vinculados OU seus próprios rep codes — é o que a
+-- view faz hoje. Se o `OR` não descer, o ramo C precisa de outro desenho.
 explain (verbose, costs, format text)
 select v.data_emissao, count(*), sum(v.total_pedido_venda)
 from erp.concrem_pedidos_venda v
 where v.id_nota_conf = any (array[307,309,613,665])
-  and ( v.representante = any (array['<COD_REP_1>'])
-        or coalesce(nullif(upper(btrim(v.grupo_cliente)), ''), 'SEM GRUPO') = any (array['<GRUPO_1>']) )
+  and ( v.representante = any (array['10008082 - DANILO AUGUSTO REHNEIN'])
+        or coalesce(nullif(upper(btrim(v.grupo_cliente)), ''), 'SEM GRUPO') = any (array['DAG COMERCIO']) )
 group by v.data_emissao;
--- PASSA: `Relations: Aggregate on (...)` + o `OR` inteiro dentro do `Remote SQL`.
--- FALHA: o `OR` aparecendo em `Filter:` local, ou agregação local.
+-- PASSA: `Relations: Aggregate on (...)` + o `OR` inteiro no `Remote SQL`.
+-- FALHA: o `OR` em `Filter:` local, ou agregação local.
 
 
 -- ############################################################################
 -- N3 — Exclusão de vendas diretas é empurrável?
 -- ############################################################################
--- Por quê: `REP_EXCLUIDOS` precisa ser aplicado dentro da função, senão o
--- cliente contorna a regra de negócio.
+-- `REP_EXCLUIDOS` precisa ser aplicado dentro da função, senão o cliente
+-- contorna a regra de negócio.
 explain (verbose, costs, format text)
 select v.data_emissao, count(*), sum(v.total_pedido_venda)
 from erp.concrem_pedidos_venda v
 where v.id_nota_conf = any (array[307,309,613,665])
   and v.representante <> all (array['40001498 - JANDERSON LEROY MERLIN'])
 group by v.data_emissao;
--- PASSA: `Relations: Aggregate on (...)` + `<> ALL` (ou `NOT (… = ANY …)`) no `Remote SQL`.
+-- PASSA: `Relations: Aggregate on (...)` + `<> ALL` (ou `NOT (… = ANY …)`) no
+--        `Remote SQL`.
 -- FALHA: a exclusão em `Filter:` local.
 --
--- ⚠️ LEMBRETE (decisão D-1): `representante <> all (...)` com `representante`
--- NULO resulta em NULL, então a linha é DESCARTADA. `null_frac` medido = 4,85%
--- (~1.550 pedidos). Isto PRESERVA o comportamento atual do PostgREST e está
--- mantido de propósito nesta etapa.
+-- LEMBRETE (decisão D-1): com `representante` NULO o predicado resulta em NULL e
+-- a linha é DESCARTADA. `null_frac` medido = 4,85% (~1.550 pedidos). Isto
+-- PRESERVA o comportamento atual do PostgREST e está mantido de propósito.
 
 
 -- ############################################################################
 -- N4 — Ramo C completo, com literais
 -- ############################################################################
--- Prova que o plano INTEIRO do caminho mais complexo continua remoto: datas,
--- id_nota_conf, exclusão, o OR com grupo normalizado, e a agregação diária.
+-- Plano INTEIRO do caminho mais complexo: datas, id_nota_conf, exclusão de
+-- vendas diretas, o OR com grupo normalizado, e a agregação diária.
 explain (verbose, costs, format text)
 select v.data_emissao, count(*), sum(v.total_pedido_venda)
 from erp.concrem_pedidos_venda v
 where v.id_nota_conf  = any (array[307,309,613,665])
-  and v.data_emissao >= '<DATA_INICIO>'
-  and v.data_emissao <= '<DATA_FIM>'
+  and v.data_emissao >= '2026-01-01'
+  and v.data_emissao <= '2026-08-20'
   and v.representante <> all (array['40001498 - JANDERSON LEROY MERLIN'])
-  and ( v.representante = any (array['<COD_REP_1>','<COD_REP_2>'])
-        or coalesce(nullif(upper(btrim(v.grupo_cliente)), ''), 'SEM GRUPO') = any (array['<GRUPO_1>']) )
+  and ( v.representante = any (array['10008082 - DANILO AUGUSTO REHNEIN',
+                                     '10006795 - VALARINI REPRESENTACOES DE MOVEIS LTDA.'])
+        or coalesce(nullif(upper(btrim(v.grupo_cliente)), ''), 'SEM GRUPO') = any (array['DAG COMERCIO']) )
 group by v.data_emissao
 order by v.data_emissao;
 -- PASSA: `Relations: Aggregate on (...)` e o `Remote SQL` com TODOS os
 --        predicados + `count(*)` + `sum(...)` + `GROUP BY`.
 -- FALHA: qualquer predicado sobrando em `Filter:` local, ou agregação local.
--- NOTA: o `order by` pode aparecer como `Sort` local sem invalidar o teste —
---       são ~300 linhas já agregadas. O que não pode ficar local é a AGREGAÇÃO.
 
 
 -- ############################################################################
--- N5 — Ramo C parametrizado, com GENERIC PLAN
+-- N5 — Ramo C completo, PARAMETRIZADO com generic plan
 -- ############################################################################
--- Este é o teste mais próximo do que a RPC vai fazer de verdade: dentro de
--- plpgsql os valores chegam como PARÂMETROS, e o plano pode ser genérico.
+-- O teste mais próximo do que a RPC fará de verdade: dentro de plpgsql os
+-- valores chegam como PARÂMETROS e o plano pode ser genérico.
 -- `force_generic_plan` reproduz o pior caso de propósito.
---
--- E0 já provou parâmetro + agregação simples. Aqui a combinação é maior:
--- datas + arrays + OR + expressão de grupo + agregação diária.
 begin;
 
 set local plan_cache_mode = force_generic_plan;
@@ -157,8 +165,13 @@ group by v.data_emissao
 order by v.data_emissao;
 
 explain (verbose, costs, format text)
-execute e2_ramo_c('<DATA_INICIO>', '<DATA_FIM>',
-                  array['<COD_REP_1>','<COD_REP_2>'], array['<GRUPO_1>']);
+execute e2_ramo_c(
+  '2026-01-01',
+  '2026-08-20',
+  array['10008082 - DANILO AUGUSTO REHNEIN',
+        '10006795 - VALARINI REPRESENTACOES DE MOVEIS LTDA.'],
+  array['DAG COMERCIO']
+);
 
 deallocate e2_ramo_c;
 
@@ -167,14 +180,14 @@ rollback;
 --        `$1::date`, `$2::date`, `$3::text[]`, `$4::text[]`, o `OR`, `count(*)`,
 --        `sum(...)` e `GROUP BY`.
 -- FALHA: agregação local, ou algum parâmetro virando `Filter:` local.
---
--- Se a saída vier vazia por causa do `rollback`, troque por `commit;` — nada foi
--- alterado, e `set local` morre com a transação nos dois casos.
 
 
 -- ############################################################################
--- N6 — Ramo A (global) com `p_representante` parametrizado
+-- N6 — Ramo A (global) com `p_representante`, PARAMETRIZADO com generic plan
 -- ############################################################################
+-- Predicado na forma SIMPLES (`= $3`), não `(x is null or ... = x)`, porque a
+-- RPC vai ramificar em plpgsql para não mandar condição sempre-verdadeira ao
+-- ERP. A forma com `is null or` exigiria teste próprio — não presumir.
 begin;
 
 set local plan_cache_mode = force_generic_plan;
@@ -186,27 +199,27 @@ where v.id_nota_conf  = any (array[307,309,613,665])
   and v.data_emissao >= $1
   and v.data_emissao <= $2
   and v.representante <> all (array['40001498 - JANDERSON LEROY MERLIN'])
-  and v.representante = $3
+  and v.representante  = $3
 group by v.data_emissao
 order by v.data_emissao;
 
 explain (verbose, costs, format text)
-execute e2_ramo_a('<DATA_INICIO>', '<DATA_FIM>', '<COD_REP_1>');
+execute e2_ramo_a(
+  '2026-01-01',
+  '2026-08-20',
+  '10008082 - DANILO AUGUSTO REHNEIN'
+);
 
 deallocate e2_ramo_a;
 
 rollback;
--- PASSA: `Relations: Aggregate on (...)` + `representante = $3` no `Remote SQL`.
--- FALHA: agregação local.
---
--- NOTA: o esboço da RPC usa `(p_representante is null or v.representante = p_representante)`.
--- Aqui o predicado está na forma SIMPLES de propósito, porque a RPC vai ramificar
--- em plpgsql para não mandar condição sempre-verdadeira ao ERP. Se você preferir
--- a forma com `is null or`, ela precisa de um N6b próprio — não presumir.
+-- PASSA: `Relations: Aggregate on (...)` + `representante = $3` no `Remote SQL`,
+--        junto de `count(*)`, `sum(...)` e `GROUP BY`.
+-- FALHA: agregação local, ou `representante = $3` em `Filter:` local.
 
 
 -- ############################################################################
--- N7 — Ramo B (representante / operador / diretor sem grupo)
+-- N7 — Ramo B (representante / operador / diretor sem grupo), generic plan
 -- ############################################################################
 begin;
 
@@ -224,12 +237,18 @@ group by v.data_emissao
 order by v.data_emissao;
 
 explain (verbose, costs, format text)
-execute e2_ramo_b('<DATA_INICIO>', '<DATA_FIM>', array['<COD_REP_1>','<COD_REP_2>']);
+execute e2_ramo_b(
+  '2026-01-01',
+  '2026-08-20',
+  array['10008082 - DANILO AUGUSTO REHNEIN',
+        '10006795 - VALARINI REPRESENTACOES DE MOVEIS LTDA.']
+);
 
 deallocate e2_ramo_b;
 
 rollback;
--- PASSA: `Relations: Aggregate on (...)` + `representante = ANY ($3::text[])` no `Remote SQL`.
+-- PASSA: `Relations: Aggregate on (...)` + `representante = ANY ($3::text[])` no
+--        `Remote SQL`, junto de `count(*)`, `sum(...)` e `GROUP BY`.
 -- FALHA: agregação local.
 
 
@@ -246,6 +265,6 @@ rollback;
 -- | N6    |                              |                          |            |          |
 -- | N7    |                              |                          |            |          |
 --
--- N4 e N5 são os decisivos: são o plano completo do caminho mais complexo, com
+-- N4 e N5 são os decisivos: o plano completo do caminho mais complexo, com
 -- literais e com parâmetros. Se os dois passarem, a RPC pode ser escrita como
 -- desenhada. Se N1 falhar, o ramo do diretor precisa de outro desenho.
