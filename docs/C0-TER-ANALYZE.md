@@ -417,3 +417,69 @@ A V1 lista **as cinco** foreign tables. Só `concrem_pedidos_venda` foi analisad
 Foreign table **não aparece** em `pg_stat_user_tables`/`pg_stat_all_tables`, então **não há
 `last_analyze`** para consultar. A evidência de que o `ANALYZE` rodou é o próprio conteúdo de
 `reltuples` e `pg_stats` — mais um motivo para ter registrado o "antes".
+
+
+## RESULTADO da verificação — antes × depois
+
+| Item | Antes | Depois |
+|---|---|---|
+| `reltuples` de `concrem_pedidos_venda` | `-1` | **31.949** |
+| `relpages` | `0` | **5.278** (≈ 42 MB) |
+| Outras 4 foreign tables | `-1` | **`-1`** — intactas ✅ |
+| `pg_stats` (4 colunas) | vazio | **4 linhas** |
+| `default_statistics_target` | 100 | **100** ✅ |
+| `enable_sort` | on | **on** ✅ |
+| Opções do server e das tabelas | *(C0)* | **idênticas** ✅ |
+
+### `id_nota_conf` — a estatística que decide
+
+Os **quatro** valores do filtro estão na lista de valores comuns, com frequência explícita:
+
+| Valor | Frequência |
+|---|---|
+| 309 | 0,2334 |
+| 307 | 0,1911 |
+| 665 | 0,0492 |
+| 613 | 0,0213 |
+| **Soma** | **0,4950** |
+
+Estimativa esperada para `IN (307,309,613,665)`: `0,495 × 31.949 ≈ **15.813 linhas**`.
+
+Antes o planejador estimava **4**. O erro era de ~3.900×.
+
+**Coerência com o app:** a Central de Pedidos mostra 7.600, mas ela também exclui `REP_EXCLUIDOS`
+(vendas diretas). A diferença de ~8.200 linhas é compatível com o volume de um cliente de varejo —
+os dois números convivem.
+
+### `data_emissao`
+
+Histograma de **2024-09-01 a 2026-08-20**, 21 limites, 568 datas distintas, sem nulos. Cobre ~2 anos de
+operação: a amostra foi representativa.
+
+`correlation = 0,117` — a ordem física quase não acompanha a data. Ordenar por `data_emissao` **não é
+grátis nem no ERP**; depende de índice lá, que não temos como inspecionar daqui.
+
+### `representante` e `grupo_cliente`
+
+- `representante`: **189 distintos**, 4,85% nulos, 20 MCVs. Plausível.
+- `grupo_cliente`: **14 distintos, todos os 14 na lista de MCV** e sem histograma — é o comportamento
+  correto quando os valores cabem inteiros na lista. **Estatística perfeita** para esta coluna.
+
+### Limite conhecido do alvo 20
+
+| Coluna | Cobertura | Consequência |
+|---|---|---|
+| `id_nota_conf` | 18 MCVs / 36 distintos — **os 4 do filtro estão dentro** | ✅ ótima para L4/L5 |
+| `grupo_cliente` | 14 / 14 | ✅ completa |
+| `data_emissao` | 20 baldes em ~2 anos (~5 semanas cada) | ⚠️ filtro de mês cai **dentro** de um balde — estimativa por interpolação |
+| `representante` | 20 MCVs / 189 distintos | ⚠️ representante fora do top-20 usa estimativa genérica |
+
+Suficiente para os testes de agora. Se depois aparecer plano ruim **filtrando por representante
+específico + mês**, o passo seguinte é subir o alvo dessas duas colunas — não voltar atrás na decisão.
+
+### Correção de uma estimativa minha
+
+Eu estimei "dezenas a mais de cem MB" para a tabela inteira. `relpages = 5.278` → **~42 MB**.
+**Superestimei o custo.** O `dados_tabela` não é tão pesado quanto supus.
+
+## Classificação: **ANALYZE ATINGIU O OBJETIVO**
