@@ -1,10 +1,132 @@
 # E2 — Plano técnico da primeira RPC de negócio
 
-> **Nada implementado.** Documento para revisão. Nenhuma migration, RPC, view, RLS, frontend, FDW
-> ou configuração foi tocada.
+> ✅ **E2 APLICADA e E3 VALIDADA em 2026-08-21.** Migration
+> `supabase/migrations/20260819000400_rpc_dashboard_serie_diaria.sql` em produção.
+> Resultados abaixo. Frontend **ainda não migrado** — isso é a E5.
 >
 > Base: E1 aplicada e validada (`app_escopo_atual()` em produção, owner `postgres`,
-> `search_path=''`, sem EXECUTE para PUBLIC/anon/authenticated).
+> `search_path=""`, sem EXECUTE para PUBLIC/`anon`/`authenticated`; **`service_role` tem EXECUTE**).
+
+---
+
+## Resultados — E2 aplicada, E3 validada (2026-08-21)
+
+### T6 · RPC nova — propriedades e ACL · **OK**
+
+| owner | SECURITY DEFINER | volatilidade | `search_path` | PUBLIC | `anon` | `authenticated` | `service_role` |
+|---|---|---|---|---|---|---|---|
+| `postgres` | true | `s` (STABLE) | `""` | — | — | **EXECUTE** | — |
+
+### T6-b · E1 preservada · **OK**
+
+| owner | SECURITY DEFINER | volatilidade | `search_path` | PUBLIC | `anon` | `authenticated` | `service_role` |
+|---|---|---|---|---|---|---|---|
+| `postgres` | true | `s` (STABLE) | `""` | — | — | — | **EXECUTE** |
+
+A migration da E2 **não alterou** a ACL da E1. A assimetria em `service_role` é deliberada — ver
+`supabase/migrations/README.md`.
+
+> A verificação usa inspeção de `proacl` com `aclexplode`, tratando `proacl is null` como
+> "PUBLIC tem EXECUTE". `proconfig` é conferido extraindo o **valor** de `search_path`, porque a forma
+> realmente armazenada é `search_path=""` — o teste antigo com `@> array['search_path=']` dava falso
+> positivo e não validava nada.
+
+### T1 · Aggregate pushdown pós-migration · **5/5 PASSOU**
+
+| Ramo | Medido em | T1 |
+|---|---|---|
+| A1 · global sem `p_representante` | **N9** | ✅ |
+| A2 · global com `p_representante` | N6 | ✅ |
+| B · somente rep codes | N7c | ✅ |
+| C · rep codes + grupos (`OR`) | N5b | ✅ |
+| B-grupos · somente grupos | **N8** | ✅ |
+
+Todos com `Relations: Aggregate on (erp.concrem_pedidos_venda)` e a agregação dentro do `Remote SQL`.
+
+### T2 · Equivalência RPC × view atual · **zero divergências em 7 cenários**
+
+| Cenário | Ramo | Divergências |
+|---|---|---|
+| representante Danilo | B | **0** |
+| diretor só `DAG COMERCIO` | B-grupos | **0** |
+| admin global | A1 | **0** |
+| admin com `p_representante` | A2 | **0** |
+| diretor_geral global | A1 | **0** |
+| operador sem escopo | — | **0** |
+| diretor artificial `DAG COMERCIO` + Danilo | C | **0** |
+
+O vínculo artificial do último caso foi criado dentro da transação e **desfeito pelo rollback**;
+residual conferido = 0. **Este era o teste que decidia a E2** — fecha a hipótese H-2, de que o `OR` do
+ramo C reproduzisse mesmo o que a view faz para o diretor.
+
+### T3 · Fail-closed · **4/4**
+
+| Cenário | Linhas |
+|---|---|
+| operador sem escopo | **0** |
+| UUID inexistente | **0** |
+| sem JWT | **0** |
+| Danilo temporariamente inativo | **0** |
+
+`rollback` confirmou `ativo = true` para o Danilo depois do teste.
+
+### T4 · Não-global com `p_representante` alheio · **ignorado, como projetado**
+
+| | sem parâmetro | com representante da Valarini |
+|---|---|---|
+| status | 200 | 200 |
+| linhas | 37 | 37 |
+
+`resultadosIdenticos = true`, na API real com o JWT do Danilo. O parâmetro **não estreita nem amplia**
+para quem não é global — preserva a UX atual (D-5) sem abrir caminho de escalação.
+
+### T5 · Validação de entrada · **5/5**
+
+| Entrada | `errcode` |
+|---|---|
+| data inicial nula | `22004` |
+| data final nula | `22004` |
+| datas invertidas | `22007` |
+| janela de 731 dias | `22023` |
+| janela de 730 dias | **aceita** |
+
+### T7 · Truncamento · **não ocorre**
+
+Janela máxima com admin: 366 linhas no SQL e na API — `status 200`, `Content-Range: 0-365/366`,
+**sem corte**. O teto de 730 dias faz o que foi projetado para fazer (achado A17).
+
+### T8 · Desempenho · **117 ms contra teto de 8 s**
+
+`Execution Time = 117,496 ms` com `statement_timeout = 8s`.
+
+Seis execuções consecutivas: **153 · 50 · 50 · 50 · 50 · 52 ms**, sempre os mesmos 366 dias,
+4.898 pedidos e o mesmo valor.
+
+**Nenhuma degradação na 6ª** — a transição de plano customizado para genérico do plpgsql **não** derruba
+o pushdown. É a melhor evidência disponível para a hipótese H-1: se a agregação tivesse voltado para
+local, seriam ~31 mil linhas atravessando o FDW com `fetch_size=100`, e o tempo denunciaria.
+
+### API real
+
+| Chamada | Resultado |
+|---|---|
+| `authenticated` admin | 200, com dados |
+| `anon` | **401**, `code 42501`, permission denied |
+| admin com representante inexistente | 200, **0 linhas** |
+| Danilo passando representante da Valarini | 200/200, 37/37, idênticos |
+
+### Hipóteses fechadas
+
+| | Hipótese | Fechada por |
+|---|---|---|
+| H-1 | pushdown vale dentro da função | T8 — 117 ms, sem degradação na 6ª |
+| H-2 | o `OR` do ramo C reproduz a view | **T2** — 7 cenários, zero divergência |
+| H-3 | plano customizado × genérico | T8, seis execuções |
+| H-5 | duração contra o teto de 8 s | T8 |
+| H-6 | linhas com `data_emissao` nula | T2, sem divergência |
+
+**Aberta:** H-4 — foreign table nunca recebe `autoanalyze`. Virou achado **A18** em
+`docs/PLANO-SANEAMENTO.md`. Não bloqueia a E5.
 
 ---
 
@@ -91,17 +213,26 @@ a linha é descartada (decisão D-1).
 
 ---
 
-## 4. Arquivos que pretendo criar ou alterar
+## 4. Arquivos — o que foi planejado e o que de fato aconteceu
 
-| Arquivo | Ação | Conteúdo |
+> **Esta seção é histórica.** A coluna "Plano" é o que estava previsto **antes** da execução, preservada
+> de propósito. A coluna "Estado real" é o que vale hoje — **é ela que descreve o repositório**.
+> O estado atual da E2 e da E3 está na seção **Resultados**, no topo do documento: ambas **concluídas**,
+> migration **aplicada** em 2026-08-21.
+
+| Arquivo | Plano (antes) | Estado real (2026-08-21) |
 |---|---|---|
-| `supabase/tests/e2_medicao_pushdown.sql` | **criar** | N1, N2, N3 — só `EXPLAIN`, nada executado |
-| `supabase/migrations/20260819000400_rpc_dashboard_serie_diaria.sql` | **criar** | a RPC, em transação única, com grants |
-| `supabase/tests/rpc_dashboard_serie_diaria.sql` | **criar** | testes de segurança e funcionais (executados na E3) |
-| `supabase/migrations/README.md` | alterar | registrar a migration nova como **pendente** |
-| `docs/PLANO-DASHBOARD-RPC.md` | alterar | marcar E1 concluída e E2 em revisão |
+| `supabase/tests/e2_medicao_pushdown.sql` | criar — N1, N2, N3, só `EXPLAIN` | ✅ criado, e **cresceu**: N1 foi reprovado e exigiu a decomposição N1a–N1f; depois vieram N5b, N6, N7c, N8 e N9. Registro de vereditos no rodapé |
+| `supabase/migrations/20260819000400_rpc_dashboard_serie_diaria.sql` | criar | ✅ criado **e APLICADO** em produção. Não é mais "pendente" |
+| `supabase/tests/rpc_dashboard_serie_diaria.sql` | criar — testes da E3 | ⚠️ **nunca criado com esse nome.** Os testes foram executados direto no SQL Editor durante a E3 e só depois versionados, como `supabase/tests/e3_rpc_dashboard_serie_diaria.sql` |
+| `supabase/migrations/README.md` | alterar — registrar como **pendente** | ✅ alterado, registrando como **aplicada**, mais a tabela de ACL das duas funções |
+| `docs/PLANO-DASHBOARD-RPC.md` | alterar — E1 concluída, **E2 em revisão** | ✅ alterado: **E2 aplicada e E3 validada**; E8 remete ao achado A18 |
 
-**Nenhum arquivo de `src/` é tocado na E2.** O frontend só muda na E5.
+**O que o plano não previa e a execução obrigou:** a decomposição N1a–N1f (achado A15), o abandono do
+`ORDER BY` (A16), o teto de janela de 730 dias (A17), o `alter function … owner to postgres` explícito,
+e a correção da validação de `search_path`, que era falso positivo.
+
+**Nenhum arquivo de `src/` foi tocado na E2 nem na E3.** O frontend só muda na E5.
 
 ---
 

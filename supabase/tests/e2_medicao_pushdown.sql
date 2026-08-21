@@ -363,11 +363,45 @@ group by v.data_emissao;
 
 
 -- ############################################################################
--- Registro N1a–N1d
+-- REGISTRO FINAL DO E2-0 (2026-08-21)
 -- ############################################################################
--- | Teste | Expressão              | `Relations: Aggregate on` ? | No Remote SQL ? | Veredito |
--- |-------|------------------------|------------------------------|-----------------|----------|
--- | N1a   | coluna crua            |                              |                 |          |
--- | N1b   | btrim(col)             |                              |                 |          |
--- | N1c   | upper(col)             |                              |                 |          |
--- | N1d   | upper(btrim(col))      |                              |                 |          |
+--
+-- ── Decomposição da normalização de grupo ───────────────────────────────────
+-- | Teste | Expressão                          | Veredito  |
+-- |-------|------------------------------------|-----------|
+-- | N1a   | grupo_cliente (coluna crua)        | PASSOU    |
+-- | N1b   | btrim(col)                         | PASSOU    |
+-- | N1c   | upper(col)                         | PASSOU    |
+-- | N1d   | upper(btrim(col))                  | PASSOU    |
+-- | N1e   | nullif(upper(btrim(col)), '')      | REPROVADO |
+-- | N1f   | CASE equivalente                   | PASSOU    |
+--
+-- CONCLUSÃO: o bloqueio é do NULLIF, não das funções de texto — achado A15.
+-- Normalização adotada na E2:
+--   case when grupo_cliente is null or btrim(grupo_cliente) = ''
+--          then 'SEM GRUPO'
+--        else upper(btrim(grupo_cliente))
+--   end
+--
+-- ── Efeito do ORDER BY sob generic plan ─────────────────────────────────────
+-- | Teste | Consulta                              | Veredito  |
+-- |-------|---------------------------------------|-----------|
+-- | N5    | ramo C parametrizado, COM order by    | REPROVADO |
+-- | N5b   | o MESMO, SEM order by                 | PASSOU    |
+--
+-- Só a AGREGAÇÃO muda de lado; os filtros continuam remotos nos dois — achado A16.
+--
+-- ── Forma final adotada em cada ramo da RPC ─────────────────────────────────
+-- | Ramo      | Escopo                        | Medido em | Veredito |
+-- |-----------|-------------------------------|-----------|----------|
+-- | A1        | global, sem p_representante   | N9        | PASSOU   |
+-- | A2        | global, com p_representante   | N6        | PASSOU   |
+-- | B         | somente rep codes             | N7c       | PASSOU   |
+-- | C         | rep codes + grupos (OR)       | N5b       | PASSOU   |
+-- | B-grupos  | somente grupos                | N8        | PASSOU   |
+--
+-- Todos em generic plan, todos SEM order by. Reconfirmados após a migration
+-- pelo teste T1 da E3, com `Relations: Aggregate on (erp.concrem_pedidos_venda)`
+-- e a agregação dentro do `Remote SQL` nos cinco.
+--
+-- Resultado da E2/E3 completo em docs/E2-PLANO-RPC-DASHBOARD.md §Resultados.

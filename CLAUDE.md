@@ -140,12 +140,20 @@ O usuário do mapping é `postgres.<ref-do-projeto-erp>` — formato exigido pel
 
 | Nome | Uso |
 |---|---|
-| `gerar_numero_orcamento()` | Único RPC chamado pelo frontend |
+| `gerar_numero_orcamento()` | RPC chamado pelo frontend |
+| `app_dashboard_serie_diaria(date, date, text)` | RPC do dashboard — série diária agregada **no ERP**. Em produção desde 21/08/2026; frontend passa a consumi-la na etapa E5 |
+| `app_escopo_atual()` | **Fonte única de escopo do usuário.** Nenhuma RPC deve reimplementar essa lógica |
 | `app_is_admin()` / `app_is_operador()` | Usadas dentro das policies |
 | `app_my_rep_codes()` | Rep codes do usuário logado; base do escopo nas views do ERP |
 | `app_can_*_orcamento()` | Autorização de orçamento nas policies |
 
-Todas `security definer` com `set search_path = public`.
+Todas `security definer`. As antigas com `set search_path = public`; as duas novas
+(`app_escopo_atual`, `app_dashboard_serie_diaria`) com **`set search_path = ''`** e todas as referências
+qualificadas por schema.
+
+**ACL — dois contratos diferentes, de propósito.** `app_escopo_atual()` concede EXECUTE só ao owner e ao
+`service_role`; o frontend **não** a alcança. `app_dashboard_serie_diaria()` concede ao `authenticated`
+e **não** ao `service_role`. Não uniformizar — ver `supabase/migrations/README.md`.
 
 ### Migrations
 
@@ -207,7 +215,15 @@ editado ou excluído pelo representante.
 `truncated`). Consultas de status em lotes de 200 para não estourar o limite de URL do PostgREST.
 
 **Vendas diretas fora da listagem:** `REP_EXCLUIDOS = ['40001498 - JANDERSON LEROY MERLIN']`
-(`src/services/pedidosVenda.ts`).
+(`src/services/pedidosVenda.ts`) — um único valor. `VALID_ID_NOTA_CONF = [307, 309, 613, 665]`
+(`src/constants/orderFilters.ts`) — exatamente quatro. As duas regras estão **reproduzidas dentro de
+`app_dashboard_serie_diaria()`**: mudar uma exige mudar a outra.
+
+**RPCs contra `erp.*` não garantem ordenação.** `order by` na mesma consulta agregada derruba o
+aggregate pushdown do `postgres_fdw` sob generic plan (achado A16) — quem ordena é o frontend. Da mesma
+família de medições: nunca usar `NULLIF`/`COALESCE` sobre coluna do ERP dentro do `WHERE`, use `CASE`
+(A15); e `Max rows = 1000` vale também para RPC `returns setof`, então toda RPC que devolva conjunto
+precisa de teto explícito de janela (A17).
 
 **Modo mock:** `VITE_USE_MOCK=true` bypassa o Supabase com `src/data/mockData.ts`.
 
@@ -298,7 +314,10 @@ Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
 
 1. **Truncamento em 1.000 registros** — o Data API corta toda consulta em `Max rows = 1000` e vários
    agregados são calculados sobre esse recorte. As telas já **avisam** (`TruncationNotice`), mas os
-   números só ficam corretos quando os agregados forem para o banco.
+   números só ficam corretos quando os agregados forem para o banco. **Em andamento:**
+   `app_dashboard_serie_diaria()` já está em produção e validada, com filtro e agregação executados no
+   ERP; falta o dashboard passar a consumi-la (etapa E5 de `docs/PLANO-DASHBOARD-RPC.md`). As demais
+   telas seguem sobre o recorte.
 2. **CAPTCHA nativo não habilitado** — o código já envia `captchaToken`; sem ligar no painel do Auth,
    `signInWithPassword` segue chamável direto.
 3. **`performance.ts` e `clientGroups.ts`** ainda operam sobre dados truncados e sem aviso.
@@ -314,7 +333,13 @@ Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
     decisão sobre serem resíduo de demonstração.
 11. **`classifyAnexo` classifica por substring solta** — "conferência" vira nota fiscal. Comportamento
     travado por teste de caracterização até a regra ser decidida.
+12. **Foreign table sem `ANALYZE` periódico** — `autovacuum` **não** analisa foreign table. O `ANALYZE`
+    de `erp.concrem_pedidos_venda` foi manual e único; as estatísticas envelhecem e nada as renova.
+    Risco hoje baixo (o pushdown que sobrou é decisão de capacidade, não de custo), mas cresce com o
+    tempo. Achado A18.
 
 **Resolvidas neste ciclo:** `npm run lint` funcionando com ESLint em flat config · CI no GitHub Actions
 (typecheck, lint, testes, build) · 56 testes automatizados · estados de erro nas telas · sessão em
-`sessionStorage` · rewrite de SPA da Vercel (404 ao recarregar) · migrations consolidadas.
+`sessionStorage` · rewrite de SPA da Vercel (404 ao recarregar) · migrations consolidadas ·
+**escopo centralizado no banco (E1)** · **primeira RPC de negócio com agregação empurrada ao ERP,
+aplicada e validada (E2/E3)**.

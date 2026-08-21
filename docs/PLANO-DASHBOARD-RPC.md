@@ -1,6 +1,8 @@
 # Plano — Dashboard por agregação diária remota
 
-> **Nada implementado.** Sem RPC, sem migration, sem alteração de RLS, FDW, frontend, cron ou plano.
+> **Estado: E0 a E3 concluídas.** `app_escopo_atual()` (E1) e `app_dashboard_serie_diaria()` (E2) estão
+> em produção e validadas — ver `docs/E2-PLANO-RPC-DASHBOARD.md` §Resultados.
+> **Frontend intocado**: E4 a E8 continuam abertas. Nenhuma alteração de RLS, FDW, cron ou plano.
 > Base: rodada M do C0-ter, medida em 2026-08-19.
 
 ---
@@ -280,13 +282,13 @@ grandeza do que a tela mostra, subir o alvo **daquelas colunas** (não global) e
 |---|---|---|---|---|
 | **E0** | **Medir pushdown com PARÂMETROS** via `PREPARE`/`EXPLAIN EXECUTE` — só `EXPLAIN`, nada criado | não | — |
 | E1 | Função auxiliar única de escopo + testes de isolamento | sim (migration) | `drop function` | ✅ **APLICADA e validada em 2026-08-19** — owner `postgres`, `search_path=''`, sem EXECUTE para PUBLIC/anon/authenticated; S1–S9, S11, S12 e S16 aprovados |
-| E2 | RPC `app_dashboard_serie_diaria` + grants + revoke de `anon` | sim | `drop function` | 🔵 plano em revisão — `docs/E2-PLANO-RPC-DASHBOARD.md` |
-| E3 | Testes S1–S10 e F1–F7 contra a RPC | não | — |
+| E2 | RPC `app_dashboard_serie_diaria` + grants + revoke de `anon` | sim | `drop function` | ✅ **APLICADA em 2026-08-21** — `20260819000400`; owner `postgres`, `search_path=""`, EXECUTE só para `authenticated` |
+| E3 | Testes T1–T8 contra a RPC + API real | não | — | ✅ **VALIDADA em 2026-08-21** — pushdown nos 5 ramos, equivalência sem divergência, fail-closed, 117 ms |
 | E4 | `consolidarMeses` (função pura) + teste do dia 1º | não | commit |
 | E5 | `dashboard.ts` passa a usar a RPC, atrás do hook existente | não | commit |
 | E6 | Remover `TruncationNotice` do dashboard | não | commit |
 | E7 | Comunicar que os números do dashboard mudaram | não | — |
-| E8 | Decidir manutenção do `ANALYZE` | — | — |
+| E8 | Decidir manutenção do `ANALYZE` | — | — | 🔵 aberta — virou o achado **A18** em `docs/PLANO-SANEAMENTO.md`. `autovacuum` não analisa foreign table |
 
 ### E0 é o próximo passo, e não cria nada
 

@@ -728,6 +728,72 @@ A função junta `concremapprep_usuario_representantes` com `concremapprep_repre
 **Severidade: a decidir** — pode ser intencional (manter histórico visível). `app_escopo_atual()`
 **preserva o comportamento atual de propósito**; mudar exige decisão de negócio.
 
+### A15 — `NULLIF` sobre coluna do ERP bloqueia o pushdown do `postgres_fdw`
+
+Medido no E2-0/N1e. `nullif(upper(btrim(grupo_cliente)), '')` some do `Remote SQL`, cai em `Filter`
+local **e arrasta a agregação junto** — o `GroupAggregate` volta para o Portal e a foreign table entrega
+linhas cruas. As mesmas funções de texto **isoladas** (N1b `btrim`, N1c `upper`) e **compostas**
+(N1d `upper(btrim(...))`) descem sem problema, assim como a coluna crua (N1a).
+
+**O bloqueio é do `NULLIF`, não das funções de texto.** Substituto medido e aprovado — N1f:
+
+```sql
+case when grupo_cliente is null or btrim(grupo_cliente) = ''
+       then 'SEM GRUPO'
+     else upper(btrim(grupo_cliente))
+end
+```
+
+**Regra que sai daqui:** nenhuma expressão contra coluna do ERP pode usar `NULLIF`/`COALESCE` dentro do
+`WHERE`. Sobre **parâmetro** é inofensivo — a proibição vale para coluna.
+
+**Severidade: informativa, mas travante.** Custou a reprovação do primeiro desenho do ramo do diretor.
+
+### A16 — `ORDER BY` faz o generic plan abandonar o aggregate pushdown
+
+Medido no E2-0, N5 contra N5b. A **mesma** consulta, parametrizada com `force_generic_plan`:
+
+| | `ORDER BY` | Filtros | Agregação |
+|---|---|---|---|
+| N5 | sim | remotos | **local** |
+| N5b | não | remotos | **remota** |
+
+Só a agregação muda de lado. Confirmado depois em N6, N7c e N8, e novamente no T1 pós-migration.
+
+**Regra que sai daqui:** nenhuma RPC contra `erp.*` pode ordenar. `app_dashboard_serie_diaria()` **não
+garante ordem das linhas** — está escrito no `comment on function`. Quem ordena é o cliente (Etapa E5).
+
+**Severidade: informativa, permanente.** Vale para toda RPC futura contra o FDW.
+
+### A17 — `Max rows = 1000` também limita RPC `returns setof`
+
+Não é um limite exclusivo de `select` em tabela: o PostgREST corta **qualquer** resposta, RPC incluída.
+Uma série diária de mais de ~1.000 dias seria truncada **em silêncio**, reintroduzindo exatamente a
+pendência que a RPC veio matar (A5).
+
+Por isso o teto de **730 dias** em `app_dashboard_serie_diaria()` — 2 anos, no máximo 731 linhas. É
+número **derivado do limite**, não arbitrário. Janela maior levanta `22023`.
+
+Verificado no T7: janela máxima devolveu 366 linhas, `Content-Range: 0-365/366`, sem corte.
+
+**Severidade: informativa.** Toda RPC futura que devolva conjunto precisa de teto explícito.
+
+### A18 — Foreign table nunca recebe `autoanalyze` — PENDÊNCIA ABERTA
+
+`autovacuum` **não** analisa foreign table. O `ANALYZE erp.concrem_pedidos_venda` do C0-ter foi manual e
+único; as estatísticas que sustentam o plano vão envelhecer sozinhas e nada as renova.
+
+**Risco hoje é baixo:** com o `ORDER BY` removido (A16), o pushdown que sobrou é decisão de
+**capacidade** do `postgres_fdw`, não de **custo** — logo, pouco sensível a estatística ruim. O que era
+cost-based (o pushdown de `ORDER BY`/`LIMIT` do C0-ter) saiu do desenho.
+
+**Risco cresce com o tempo** e com qualquer RPC futura cujo plano dependa de seletividade.
+
+**Ação proposta, não executada:** `ANALYZE` periódico da foreign table. Decidir entre `pg_cron` no
+Portal e execução manual registrada. Ver etapa E8 de `docs/PLANO-DASHBOARD-RPC.md`.
+
+**Severidade: manutenção.** Não bloqueia a E5.
+
 ## Verificação visual pendente — Etapa 3.5
 
 Roteiro reproduzível, ~2 minutos, sem tocar em nada:
@@ -759,6 +825,9 @@ que renderiza cada tela em estado de erro.
 | 4 | Sessão | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | commit `96a7d12`; typecheck, lint e build verdes; inspeção descarta quebra de fluxo por nova aba | ressalva: matriz de 10 cenários em `docs/ETAPA-4-VERIFICACAO-SESSAO.md` aguarda execução manual; cenário de expiração de token NÃO VERIFICADO |
 | 5 | Anti-força-bruta | **PARCIAL** | 2026-08-19 | commit da etapa; typecheck, lint e build verdes | código pronto (envia `captchaToken`, Edge Function não é mais chamada). **Falta a parte de painel** — roteiro em `docs/ETAPA-5-CAPTCHA-NATIVO.md`, com ordem obrigatória |
 | 6 | Testes | **CONCLUÍDO COM RESSALVAS** | 2026-08-19 | 56 testes em 6 arquivos, 1,1s; mutação proposital (`diretor` virando global) derrubou 6 testes em 3 arquivos e a restauração devolveu 56 verdes | ressalva: falta o teste de integração de RLS (6.3), que prova o isolamento **no banco** — vai junto da Etapa 7 |
+| E1 | Escopo centralizado (`app_escopo_atual`) | **CONCLUÍDO** | 2026-08-20 | migration `20260819000300` aplicada; B1–B4, P6, S1–S8, S11, S12, S16 aprovados | fonte única de escopo; owner `postgres`, `search_path=""`; EXECUTE só para owner e `service_role` |
+| E2 | RPC `app_dashboard_serie_diaria` | **CONCLUÍDO** | 2026-08-21 | migration `20260819000400` aplicada; T6 veredito OK | 5 ramos explícitos (A1, A2, B, C, B-grupos), todos em forma medida; teto de 730 dias; sem `ORDER BY` |
+| E3 | Verificação da RPC | **CONCLUÍDO** | 2026-08-21 | T1–T8 + API real; SQL versionado em `supabase/tests/e3_rpc_dashboard_serie_diaria.sql`; resultados em `docs/E2-PLANO-RPC-DASHBOARD.md` §Resultados | pushdown nos 5 ramos; equivalência **sem divergência** em 7 perfis; fail-closed em 4 cenários; 117 ms contra teto de 8 s |
 | 7 | Migrations | PENDENTE | — | — | aguarda D3 + autorização de banco |
 | 8 | Conferido no banco | PENDENTE | — | — | D4 aprovada; depende da Etapa 7 |
 | 9 | Código morto | PENDENTE | — | — | — |
