@@ -350,16 +350,26 @@ Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
     de `erp.concrem_pedidos_venda` foi manual e único; as estatísticas envelhecem e nada as renova.
     Risco hoje baixo (o pushdown que sobrou é decisão de capacidade, não de custo), mas cresce com o
     tempo. Achado A18.
-13. **Seletor de representantes devolve lista incompleta** — `useRepresentantesUnicos` usa `queryKey`
-    sem `scopeKey`/`uid`; a tentativa agregada `select=representante,count()` responde **HTTP 400** e o
-    fallback fica sujeito ao teto de 1.000, cortado **em ordem alfabética**. Representante fora do
-    prefixo some do filtro do admin. Não é falha de segurança (a RLS continua valendo), é perda de
-    função. `situacoes-entrega` tem o mesmo defeito. Achado A19.
-14. **"Trimestre" na UI não é o trimestre civil** — `dashboardJanelas` ignora `filtros.trimestre` e usa
+13. **"Trimestre" na UI não é o trimestre civil** — `dashboardJanelas` ignora `filtros.trimestre` e usa
     janela móvel de 3 meses; o `<Select>` de T1–T4 do dashboard operacional é decorativo. Achado A20.
 
 **Resolvidas neste ciclo:** `npm run lint` funcionando com ESLint em flat config · CI no GitHub Actions
 (typecheck, lint, testes, build) · 56 testes automatizados · estados de erro nas telas · sessão em
 `sessionStorage` · rewrite de SPA da Vercel (404 ao recarregar) · migrations consolidadas ·
 **escopo centralizado no banco (E1)** · **primeira RPC de negócio com agregação empurrada ao ERP,
-aplicada e validada (E2/E3)**.
+aplicada e validada (E2/E3)** · **série do dashboard consumindo a RPC (E5)** ·
+**seletor de representantes completo (A19)**.
+
+> **A19 — seletor de representantes, resolvido em 21/08/2026.** A lista vinha cortada: das 7.682 linhas
+> elegíveis com 243 representantes distintos, só **14** apareciam. Duas correções: `valoresDistintos`
+> **pagina o fallback** com `.range()` até esgotar, e as `queryKey` de `representantes-unicos` e
+> `situacoes-entrega` passaram a **incluir `scopeKey`** — as duas listas saem da view com RLS, e a chave
+> fixa reaproveitava a lista de outro usuário na mesma aba.
+>
+> **Agregações do PostgREST continuam desabilitadas** (`PGRST123 — Use of aggregate functions is not
+> allowed`). A tentativa agregada segue no código de propósito: se for habilitada um dia, o caminho
+> barato volta a valer sozinho.
+>
+> ⚠️ **Não trocar a fonte para `concremapprep_representantes` sem decisão de negócio.** A semântica é
+> outra: hoje a lista traz quem **tem pedido** no ERP dentro do escopo; aquela tabela traz quem está
+> **cadastrado no Portal**, e a policy dela é `using (true)` — todo autenticado veria todos.

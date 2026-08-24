@@ -340,7 +340,7 @@ Os três consumidores foram exercitados: `DashboardPage`, `useExecutiveSummary` 
 
 | | Achado | Situação |
 |---|---|---|
-| **A19** | Seletor de representantes devolve lista incompleta | **Pré-existente, fora da E5.** `queryKey` sem escopo · agregado responde **400** · fallback truncado em 1.000, cortado alfabeticamente. Danilo não aparecia. Contornado usando CEDRO |
+| **A19** | Seletor de representantes devolve lista incompleta | **Pré-existente, fora da E5.** `queryKey` sem escopo · agregado responde **400** · fallback truncado em 1.000, cortado alfabeticamente. Danilo não aparecia. Contornado usando CEDRO. ✅ **Resolvido posteriormente** — ver `docs/A19-SELETOR-REPRESENTANTES.md` |
 | **A20** | "Trimestre" na UI não é o trimestre civil | `dashboardJanelas` ignora `filtros.trimestre`. Semântica **preservada de propósito** pela E5 |
 | **D-a** | `pedidosErr` devolve `EMPTY_STATS` e descarta série válida | Dívida assumida; piorou com a E5 |
 | **D-b** | Erros de status/anexos silenciosos | Pré-existente |

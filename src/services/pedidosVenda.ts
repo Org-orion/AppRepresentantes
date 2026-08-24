@@ -225,28 +225,36 @@ export async function fetchPedidosCompleto(params: FetchPedidosParams): Promise<
   return { data: pedidos, total, truncated: pedidos.length < total };
 }
 
-// ─── Valores distintos para os filtros (etapa C1) ────────────────────────────
+// ─── Valores distintos para os filtros (etapa C1 · achado A19) ───────────────
 //
-// PROBLEMA CORRIGIDO AQUI: estas duas funções liam uma COLUNA de pedidos e
-// faziam `new Set(...)` no navegador. Como o Data API corta em API_MAX_ROWS
-// (1.000), o conjunto era montado a partir das 1.000 linhas mais recentes —
-// então um representante sem venda recente simplesmente NÃO APARECIA no filtro,
-// e o admin não tinha como filtrar por ele. Silencioso: a lista vinha curta sem
-// nenhum sinal de que estava incompleta.
+// PROBLEMA ORIGINAL: estas duas funções liam uma COLUNA de pedidos e faziam
+// `new Set(...)` no navegador, numa leitura ÚNICA. Como o Data API corta em
+// API_MAX_ROWS (1.000) e a consulta ordena por `order(coluna)`, o que chegava
+// eram as **1.000 primeiras linhas em ordem alfabética da própria coluna** — um
+// PREFIXO, não uma amostra. Todo valor cuja posição acumulada passasse de 1.000
+// linhas simplesmente sumia do filtro, sem nenhum sinal de lista incompleta.
 //
-// SOLUÇÃO: agregação no PostgREST (`select=coluna,count()`), que faz GROUP BY
-// implícito pela coluna não agregada — ou seja, o DISTINCT acontece no banco. O
-// que trafega são dezenas de linhas (uma por valor distinto), não milhares, e o
-// teto de 1.000 deixa de morder.
+// Medido em produção (21/08/2026, coluna `representante`): 7.682 linhas
+// elegíveis, 243 representantes distintos — e apenas **14** apareciam nas
+// primeiras 1.000 linhas. O corte era severo, não marginal.
 //
-// ESCOPO: a agregação roda sobre a view `concrem_pedidos_venda`, que já aplica
-// RLS. Um representante continua vendo só os próprios códigos; um diretor, só os
-// grupos dele. Nada de acesso muda.
+// SOLUÇÃO PREFERIDA: agregação no PostgREST (`select=coluna,count()`), que faz
+// GROUP BY implícito pela coluna não agregada — o DISTINCT sai pronto do banco,
+// e trafegam dezenas de linhas em vez de milhares.
 //
-// FALLBACK: a agregação do PostgREST pode estar desabilitada no projeto
-// (`db-aggregates-enabled`). Se falhar, voltamos ao caminho antigo — que é
-// incompleto, mas é exatamente o comportamento de hoje, então não há regressão.
-// O aviso no console existe para isso não passar despercebido em desenvolvimento.
+// ⚠️ INDISPONÍVEL NESTE PROJETO: o PostgREST responde
+// `PGRST123 — Use of aggregate functions is not allowed`. Agregação está
+// desabilitada (`db-aggregates-enabled`), e habilitá-la é decisão de painel,
+// fora do escopo desta correção. A tentativa continua aqui de propósito: se um
+// dia for habilitada, o caminho barato passa a valer sozinho.
+//
+// FALLBACK, AGORA PAGINADO: percorre a consulta antiga em páginas de
+// API_MAX_ROWS via `.range()`, até uma página vir incompleta. Custa mais
+// round-trips, mas devolve o conjunto INTEIRO — que é o ponto.
+//
+// ESCOPO: tudo roda sobre a view `concrem_pedidos_venda`, que já aplica RLS. Um
+// representante continua vendo só os próprios códigos; um diretor, só o escopo
+// dele. Nada de acesso muda, e `erp.*` não é tocado pelo frontend.
 async function valoresDistintos(coluna: 'representante' | 'situacao_entrega'): Promise<string[]> {
   // `agregado = true` usa `select=coluna,count()`, que faz GROUP BY implícito
   // pela coluna não agregada — o DISTINCT sai pronto do banco.
@@ -272,15 +280,52 @@ async function valoresDistintos(coluna: 'representante' | 'situacao_entrega'): P
 
   if (import.meta.env.DEV) {
     console.warn(
-      `[filtros] agregação indisponível para "${coluna}" — caindo no caminho antigo, ` +
-      'que é limitado pelo teto do Data API e pode devolver lista incompleta.',
+      `[filtros] agregação indisponível para "${coluna}" — usando a leitura paginada. ` +
+      'O resultado é completo; o custo é mais round-trips.',
       error,
     );
   }
 
-  const { data: rows, error: erroLegado } = await montar(false);
-  if (erroLegado) throw erroLegado;
-  return [...new Set(extrair(rows ?? []))];
+  // ── Fallback paginado ──────────────────────────────────────────────────────
+  //
+  // PARADA: uma página com MENOS linhas que o tamanho pedido é a última. Página
+  // vazia encerra pelo mesmo teste. O offset avança por um valor fixo, então o
+  // laço termina sempre — a view é finita.
+  //
+  // A contagem de parada usa o número de linhas CRUAS (`recebidas`), não o de
+  // valores extraídos: `extrair` descarta vazios, e usar o tamanho já filtrado
+  // faria o laço parar cedo numa página com valores em branco.
+  //
+  // PAGINAR COM EMPATES É SEGURO AQUI, e vale explicar por quê. `order(coluna)`
+  // sobre milhares de linhas repetidas não define ordem total estável entre
+  // requisições, então uma linha pode trocar de página. Mas a troca só acontece
+  // DENTRO do grupo de linhas com o MESMO valor — e é justamente o valor que
+  // estamos coletando. Um grupo nunca some inteiro: sua posição depende só de
+  // quantas linhas têm valor menor, que é fixo. Logo o conjunto de valores
+  // distintos é imune ao rearranjo.
+  //
+  // ⚠️ API_MAX_ROWS precisa refletir o `Max rows` do painel. Se o painel for
+  // reduzido abaixo desta constante, a primeira página vem curta e o laço para
+  // cedo — voltando ao truncamento silencioso. Ver src/constants/apiLimits.ts.
+  const valores: string[] = [];
+  for (let offset = 0; ; offset += API_MAX_ROWS) {
+    const { data: pagina, error: erroPagina } =
+      await montar(false).range(offset, offset + API_MAX_ROWS - 1);
+
+    if (erroPagina) throw erroPagina;
+
+    const recebidas = pagina?.length ?? 0;
+    valores.push(...extrair(pagina ?? []));
+
+    if (recebidas < API_MAX_ROWS) break;
+  }
+
+  // Deduplica SÓ depois de reunir todas as páginas — o mesmo valor aparece em
+  // milhares de linhas e pode cruzar a fronteira entre páginas. O `Set` preserva
+  // a ordem de inserção, que é a ordem do banco: as páginas chegam em sequência,
+  // então o resultado sai ordenado como antes, sem reordenar no cliente (o que
+  // trocaria a collation do banco pela do navegador).
+  return [...new Set(valores)];
 }
 
 export async function fetchSituacoesEntrega(): Promise<string[]> {

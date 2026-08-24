@@ -794,7 +794,7 @@ Portal e execução manual registrada. Ver etapa E8 de `docs/PLANO-DASHBOARD-RPC
 
 **Severidade: manutenção.** Não bloqueia a E5.
 
-### A19 — Seletor de representantes devolve lista incompleta — PRÉ-EXISTENTE, fora da E5
+### A19 — Seletor de representantes devolve lista incompleta — ✅ RESOLVIDO em 2026-08-21
 
 Encontrado durante a verificação manual da E5-6: `10008082 - DANILO AUGUSTO REHNEIN` **não aparecia** no
 seletor "Todos os representantes", embora tenha pedidos válidos (12 medidos na E5-0).
@@ -828,7 +828,58 @@ representante das medições da E5-0. Contornado usando `1000325 - CEDRO REPRESE
 
 **Severidade: média.** Não é falha de segurança — a view aplica RLS e ninguém vê dado alheio. É perda de
 função: o admin não consegue filtrar por quem não está na lista. **`situacoes-entrega` tem exatamente o
-mesmo problema.** Não corrigido na E5, de propósito: é anterior a ela e merece etapa própria.
+mesmo problema.** Não corrigido na E5, de propósito: é anterior a ela e mereceu etapa própria.
+
+#### ✅ Resolvido em 2026-08-21
+
+**Duas causas, medidas antes de qualquer código.**
+
+**Causa 1 — o agregado não é utilizável neste projeto.** O PostgREST responde
+`HTTP 400 · PGRST123 — Use of aggregate functions is not allowed`: agregação está desabilitada
+(`db-aggregates-enabled`). Não é sintaxe nem bug do código; é configuração de plataforma.
+
+**Causa 2 — o fallback lia uma página só, e caía no teto.** `select=coluna` sem `range`, cortado em 1.000
+pelo Data API. Como a consulta ordena por `order(representante)`, **o corte é alfabético, não temporal**:
+o que chegava era um PREFIXO da lista ordenada, e todo valor cuja posição acumulada passasse de 1.000
+linhas sumia.
+
+**Medição em produção, somente `SELECT`:**
+
+| | |
+|---|---|
+| Linhas elegíveis | **7.682** |
+| Representantes distintos | **243** |
+| Distintos que sobreviviam ao fallback antigo | **14** |
+| Último antes do corte | `1000325 - CEDRO REPRESENTAÇÕES LTDA - ME` |
+| `10008082 - DANILO AUGUSTO REHNEIN` no fallback | **não** |
+
+**14 de 243.** O corte era severo, não marginal.
+
+**Correção — duas partes, ambas em `src/`:**
+
+1. **`valoresDistintos` pagina o fallback** com `.range()` até uma página vir incompleta. A tentativa
+   agregada continua primeiro, para o caminho barato voltar a valer sozinho se a agregação for
+   habilitada um dia. Filtros, tabela e `order` idênticos; deduplicação só depois de reunir todas as
+   páginas; erro de qualquer página continua propagando.
+2. **`queryKey` com escopo** em `useRepresentantesUnicos` e `useSituacoesEntrega`. As duas listas saem
+   da view com RLS, então o conteúdo depende de quem está logado — a chave fixa permitia reaproveitar a
+   lista do usuário anterior na mesma aba.
+
+**Validação manual (2026-08-21):**
+
+- **admin** — Danilo passou a aparecer no seletor do Dashboard e, ao ser escolhido, a tela carregou
+  R$ 671,05 · 1 pedido · −87,5 %, batendo com a RPC;
+- **troca de escopo na mesma aba** — admin carregou a lista global, logout, login como representante,
+  filtro de Pedidos: apareceram **somente os três códigos do próprio escopo**. Nenhum representante
+  alheio.
+
+**Nada de RLS, escopo ou backend mudou.** Sem migration, sem SQL, sem alteração de configuração do
+Supabase. Cobertura nova: 26 testes (`pedidosVenda.test.ts` e `usePedidosVenda.test.ts`); suíte em 212.
+
+Detalhamento reproduzível em `docs/A19-SELETOR-REPRESENTANTES.md`.
+
+> ⚠️ **O comentário de `pedidosVenda.ts` dizia "as 1.000 linhas mais recentes"** — descrição errada do
+> mesmo mecanismo. Corrigido para "primeiras 1.000 em ordem alfabética da coluna".
 
 ### A20 — "Trimestre" na UI não é o trimestre civil
 
