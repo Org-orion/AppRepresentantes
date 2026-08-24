@@ -287,7 +287,7 @@ grandeza do que a tela mostra, subir o alvo **daquelas colunas** (não global) e
 | E4 | Função pura de consolidação + testes | não | commit | ✅ **CONCLUÍDA em 2026-08-21** — saiu como `consolidarDashboardSerie()`, não `consolidarMeses`: consolida a série DIÁRIA da RPC, não meses já agregados |
 | E5 | `dashboard.ts` passa a usar a RPC, atrás do hook existente | não | commit | ✅ **CONCLUÍDA em 2026-08-21** — E5-0 a E5-6. Evidência em `docs/E5-VERIFICACAO-DASHBOARD.md` |
 | E6 | Remover `TruncationNotice` do dashboard | não | commit | 🔴 **NÃO EXECUTAR** — ver abaixo |
-| E7 | Comunicar que os números do dashboard mudaram | não | — | 🔵 **ABERTA e mais urgente que o previsto** — a DIV-1 muda o número do DIRETOR, não só a precisão |
+| E7 | Comunicar que os números do dashboard mudaram | não | — | ✅ **CONCLUÍDA em 2026-08-21** — impacto medido: **0 usuários afetados**. Comunicação no app dispensada. Ver abaixo e `docs/E7-COMUNICACAO-DIRETORES.md` |
 | E8 | Decidir manutenção do `ANALYZE` | — | — | 🔵 aberta — virou o achado **A18** em `docs/PLANO-SANEAMENTO.md`. `autovacuum` não analisa foreign table |
 
 ### E5 — sub-etapas, todas concluídas em 2026-08-21
@@ -322,6 +322,50 @@ no mês corrente** (dezembro, quando o ano selecionado não é o atual). Não é
 Foi verificado na E5-6: período atual **Jun–Ago**, anterior **Mar–Mai**. A E5 **não mexeu nisso** de
 propósito — mudar seria alterar número sem pedido. A divergência entre o que a UI sugere e o que o
 cálculo faz está registrada como achado **A20**.
+
+### E7 — comunicação medida antes de escrita, e dispensada
+
+A etapa nasceu prevendo **comunicar uma mudança de números**: a DIV-1 alterou o contrato do diretor de
+"só grupos" para "representantes **e** grupos", e isso poderia aumentar o indicador de quem tivesse os
+dois vínculos.
+
+**Antes de escrever qualquer texto, o impacto real foi medido na base de produção** — somente `SELECT`,
+com os mesmos critérios de `app_escopo_atual()`.
+
+| | Medido em 2026-08-21 |
+|---|---|
+| Diretores ativos | **1** |
+| …com representantes no escopo | **0** |
+| …com grupos ativos | **1** |
+| …com **ambos** — afetados pela DIV-1 | **0** |
+| Diretores gerais ativos | **1** (escopo já era global; não afetado) |
+
+**Nenhum usuário real teve número alterado pela nova regra neste snapshot.** O único diretor ativo tem
+grupo e nenhum representante no escopo — para ele, o resultado da regra nova é idêntico ao da antiga.
+
+**Decisão registrada:**
+
+- **não** enviar comunicação no app agora;
+- **não** criar banner;
+- **não** gerar notificação em `concremapprep_notificacoes`;
+- **não** alterar UI nesta etapa;
+- o contrato **permanece** `representantes + grupos` quando ambos existirem — a regra não muda por não
+  haver, hoje, quem a exerça;
+- reavaliar a comunicação **quando surgir o primeiro diretor com os dois vínculos**.
+
+O tempo verbal correto hoje é **"passam a considerar"**, não "agora consideram". Dizer a um diretor que
+"seus valores mudaram" seria **falso** para todos os usuários atuais — e desmentir o próprio aviso é o
+caminho mais rápido para o gestor deixar de confiar no indicador.
+
+**Critério de conclusão da E7** — fixado aqui, porque a etapa não tinha um:
+
+1. impacto atual **medido** na base, não estimado;
+2. público **determinado** a partir da medição;
+3. decisão de comunicação **registrada**, com o porquê;
+4. **nenhuma comunicação enviada quando não existe usuário afetado.**
+
+Os quatro estão cumpridos. Evidência reproduzível, com as consultas usadas, em
+`docs/E7-COMUNICACAO-DIRETORES.md`.
 
 ### Limite de 730 dias — validado no navegador
 

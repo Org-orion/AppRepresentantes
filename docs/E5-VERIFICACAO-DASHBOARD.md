@@ -105,7 +105,13 @@ Sujeito: diretor de teste, grupo `DAG COMERCIO`, com `10008082 - DANILO AUGUSTO 
 ignorava os rep codes do diretor, **não** foi preservada.
 
 > Isto **muda o número que o diretor vê**, para mais. Não é efeito colateral: é correção. A comunicação
-> disso é a etapa **E7**, ainda aberta.
+> disso é a etapa **E7**.
+>
+> ✅ **A E7 mediu depois a base inteira (2026-08-21): 0 diretores possuíam simultaneamente
+> representantes no escopo e grupos ativos.** Portanto a mudança de contrato **não alterou o número de
+> nenhum usuário real** no snapshot da E7 — o delta acima veio de um vínculo artificial, criado em
+> transação e desfeito. A regra continua valendo; o que não existe hoje é quem a exerça. Medição,
+> decisão e gatilho futuro em `docs/E7-COMUNICACAO-DIRETORES.md`.
 
 **DIV-2 e DIV-5 medidas junto, ambas sem efeito no caso real:** para `DAG COMERCIO`, `name` e
 `normalized_name` são a mesma string e as duas regras selecionam os mesmos 3 pedidos; o grupo está ativo.
@@ -347,5 +353,6 @@ Detalhamento em `docs/PLANO-SANEAMENTO.md`.
 - não alterou `DashboardStats`, `useDashboardStats`, páginas ou componentes;
 - não removeu o `TruncationNotice` — isso é a E6, e **não deve ser feito agora**;
 - não corrigiu A19, A20, D-a nem D-b;
-- não comunicou a mudança de números do diretor — isso é a **E7**, aberta e mais urgente do que o plano
-  original previa, porque a DIV-1 muda o **valor**, não só a precisão.
+- não comunicou a mudança de escopo do diretor — a decisão coube à **E7**, tratada em seguida. Ela mediu
+  a base atual e encontrou **0 diretores afetados** pela DIV-1, de modo que **nenhuma comunicação in-app
+  foi enviada**. Ver `docs/E7-COMUNICACAO-DIRETORES.md`.
