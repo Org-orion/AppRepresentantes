@@ -24,7 +24,13 @@ export default function ExecutiveDashboardPager({ global = false }: { global?: b
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
 
-  const [period, setPeriod] = useState<ExecutivePeriod>({ periodo: 'mes', ano: new Date().getFullYear() });
+  // `mes` entra explícito para o seletor do header nascer coerente com o que os
+  // dados já usavam por omissão (`dashboardJanelas` assume o mês corrente quando
+  // `mes` não vem). Sem isto o select apareceria vazio na primeira renderização.
+  const [period, setPeriod] = useState<ExecutivePeriod>(() => {
+    const agora = new Date();
+    return { periodo: 'mes', ano: agora.getFullYear(), mes: agora.getMonth() + 1 };
+  });
   const [atualizadoEm, setAtualizadoEm] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
 

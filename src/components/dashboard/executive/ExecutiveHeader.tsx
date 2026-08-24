@@ -11,6 +11,8 @@ const PERIODOS: { key: PeriodoFiltro; label: string }[] = [
   { key: 'ano', label: 'Ano' },
 ];
 
+const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
 interface Props {
   period: ExecutivePeriod;
   onPeriodChange: (p: ExecutivePeriod) => void;
@@ -26,7 +28,9 @@ export default function ExecutiveHeader({ period, onPeriodChange, onRefresh, atu
   const { user } = useAuth();
   const { grupos } = useDataScope();
   const nome = user?.usuario?.nome ?? 'Diretoria';
-  const anoAtual = new Date().getFullYear();
+  const agora = new Date();
+  const anoAtual = agora.getFullYear();
+  const mesAtual = agora.getMonth() + 1;          // 1-12, como em ExecutivePeriod
   const anos = [anoAtual, anoAtual - 1, anoAtual - 2];
 
   return (
@@ -68,10 +72,24 @@ export default function ExecutiveHeader({ period, onPeriodChange, onRefresh, atu
           <select
             value={period.ano ?? anoAtual}
             onChange={e => onPeriodChange({ ...period, ano: Number(e.target.value) })}
+            aria-label="Ano"
             className="h-8 rounded-lg bg-white/10 text-white text-[11px] font-medium px-2 border-none outline-none focus:ring-2 focus:ring-white/30 [&>option]:text-gray-900"
           >
             {anos.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
+          {/* Mês — só faz sentido quando o período é mensal.
+              Sem ele o mês ficava preso no corrente: `dashboardJanelas` cai em
+              `filtros.mes ?? (now.getMonth() + 1)` quando `mes` não vem. */}
+          {period.periodo === 'mes' && (
+            <select
+              value={period.mes ?? mesAtual}
+              onChange={e => onPeriodChange({ ...period, mes: Number(e.target.value) })}
+              aria-label="Mês"
+              className="h-8 rounded-lg bg-white/10 text-white text-[11px] font-medium px-2 border-none outline-none focus:ring-2 focus:ring-white/30 [&>option]:text-gray-900"
+            >
+              {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+          )}
           <button type="button" onClick={onRefresh}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-medium transition-colors">
             <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} /> Atualizar
