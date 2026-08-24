@@ -225,6 +225,17 @@ família de medições: nunca usar `NULLIF`/`COALESCE` sobre coluna do ERP dentr
 (A15); e `Max rows = 1000` vale também para RPC `returns setof`, então toda RPC que devolva conjunto
 precisa de teto explícito de janela (A17).
 
+**A RPC é a fonte canônica dos quatro campos da série do dashboard.** `totalVendidoMes`,
+`totalVendidoMesAnt`, `pedidosNoPeriodo` e `vendasMensais` saem de `app_dashboard_serie_diaria()`, e o
+frontend só pode **ordenar e consolidar** (`consolidarDashboardSerie`) — **nunca rederivá-los da lista
+bruta de pedidos**, que continua cortada em 1.000 linhas e sem `order by`. Rederivar reintroduz o
+truncamento em silêncio. Os demais campos do dashboard seguem, de propósito, na consulta bruta.
+
+**Janela do dashboard: teto de 730 dias, margem zero.** `dashboardRpcRange()` cobre período, período
+anterior e os 6 meses do gráfico numa chamada só. O pior caso (`periodo='ano'` com um 29/02 na união)
+bate **exatamente** em 730, que é o máximo aceito pela RPC. Alargar a série ou criar período mais longo
+estoura e devolve `22023`.
+
 **Modo mock:** `VITE_USE_MOCK=true` bypassa o Supabase com `src/data/mockData.ts`.
 
 ## Edge Functions
@@ -313,11 +324,13 @@ Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
 **Abertas:**
 
 1. **Truncamento em 1.000 registros** — o Data API corta toda consulta em `Max rows = 1000` e vários
-   agregados são calculados sobre esse recorte. As telas já **avisam** (`TruncationNotice`), mas os
-   números só ficam corretos quando os agregados forem para o banco. **Em andamento:**
-   `app_dashboard_serie_diaria()` já está em produção e validada, com filtro e agregação executados no
-   ERP; falta o dashboard passar a consumi-la (etapa E5 de `docs/PLANO-DASHBOARD-RPC.md`). As demais
-   telas seguem sobre o recorte.
+   agregados são calculados sobre esse recorte. **Parcialmente resolvido no dashboard (E5, 21/08/2026):**
+   `totalVendidoMes`, `totalVendidoMesAnt`, `pedidosNoPeriodo` e `vendasMensais` vêm de
+   `app_dashboard_serie_diaria()`, agregados no ERP e **fora do teto**. Continuam sobre o recorte, na
+   mesma tela: `totalPedidos`, `ticketMedio`, `pipeline`, `totalFaturadoMes`, `faturadosNoPeriodo` e
+   `truncado` — todos precisam de `numero_pedido`, que a RPC não devolve. **Por isso o
+   `TruncationNotice` continua na tela**: mudou de significado, não deixou de valer. As demais telas
+   seguem inteiramente sobre o recorte.
 2. **CAPTCHA nativo não habilitado** — o código já envia `captchaToken`; sem ligar no painel do Auth,
    `signInWithPassword` segue chamável direto.
 3. **`performance.ts` e `clientGroups.ts`** ainda operam sobre dados truncados e sem aviso.
@@ -337,6 +350,13 @@ Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
     de `erp.concrem_pedidos_venda` foi manual e único; as estatísticas envelhecem e nada as renova.
     Risco hoje baixo (o pushdown que sobrou é decisão de capacidade, não de custo), mas cresce com o
     tempo. Achado A18.
+13. **Seletor de representantes devolve lista incompleta** — `useRepresentantesUnicos` usa `queryKey`
+    sem `scopeKey`/`uid`; a tentativa agregada `select=representante,count()` responde **HTTP 400** e o
+    fallback fica sujeito ao teto de 1.000, cortado **em ordem alfabética**. Representante fora do
+    prefixo some do filtro do admin. Não é falha de segurança (a RLS continua valendo), é perda de
+    função. `situacoes-entrega` tem o mesmo defeito. Achado A19.
+14. **"Trimestre" na UI não é o trimestre civil** — `dashboardJanelas` ignora `filtros.trimestre` e usa
+    janela móvel de 3 meses; o `<Select>` de T1–T4 do dashboard operacional é decorativo. Achado A20.
 
 **Resolvidas neste ciclo:** `npm run lint` funcionando com ESLint em flat config · CI no GitHub Actions
 (typecheck, lint, testes, build) · 56 testes automatizados · estados de erro nas telas · sessão em

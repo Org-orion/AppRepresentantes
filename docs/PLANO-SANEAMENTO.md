@@ -794,6 +794,71 @@ Portal e execução manual registrada. Ver etapa E8 de `docs/PLANO-DASHBOARD-RPC
 
 **Severidade: manutenção.** Não bloqueia a E5.
 
+### A19 — Seletor de representantes devolve lista incompleta — PRÉ-EXISTENTE, fora da E5
+
+Encontrado durante a verificação manual da E5-6: `10008082 - DANILO AUGUSTO REHNEIN` **não aparecia** no
+seletor "Todos os representantes", embora tenha pedidos válidos (12 medidos na E5-0).
+
+Três defeitos somados, todos em código **não tocado pela E5**:
+
+1. **`queryKey` sem escopo** — `useRepresentantesUnicos` usa `['representantes-unicos']`
+   (`src/hooks/usePedidosVenda.ts:34`), sem `scopeKey` nem `uid`. É o **único** hook de dado sensível
+   nessa condição; compare com `['dashboard-stats', scopeKey, …]` ou `['carteira', { scopeKey, rep }]`.
+   Trocar de usuário na mesma aba, sem recarregar, reaproveita a lista do anterior por até 30 min.
+
+2. **A agregação falha com HTTP 400** — `valoresDistintos()` tenta
+   `select=representante,count()` (`src/services/pedidosVenda.ts:256`), que é o **único `count()` do
+   projeto**. O 400 aparece no console; o código o engole e cai no fallback. Causa provável:
+   `db-aggregates-enabled` desligado no PostgREST — **NÃO VERIFICADO**, falta ler a resposta.
+
+3. **O fallback é truncado** — `select=representante` **sem `limit`/`range`**, com `ORDER BY
+   representante`. O Data API corta em 1.000 e o `Set` é montado só sobre elas. Como a ordem é pela
+   própria coluna, o resultado é um **prefixo alfabético**: todo representante cuja posição acumulada
+   passe de 1.000 linhas desaparece.
+
+> O comentário de `pedidosVenda.ts:230-235` descreve o corte como "as 1.000 linhas **mais recentes**".
+> Está desatualizado: com `.order(coluna)` o corte é **alfabético**. O mecanismo é o mesmo; a descrição,
+> não.
+
+**Efeito colateral:** em produção nem o `console.warn` aparece — ele está atrás de `import.meta.env.DEV`.
+A lista chega curta, sem nenhum sinal.
+
+**Impacto na verificação:** impediu testar o `p_representante` do admin com o Danilo, que é o
+representante das medições da E5-0. Contornado usando `1000325 - CEDRO REPRESENTAÇÕES LTDA - ME`.
+
+**Severidade: média.** Não é falha de segurança — a view aplica RLS e ninguém vê dado alheio. É perda de
+função: o admin não consegue filtrar por quem não está na lista. **`situacoes-entrega` tem exatamente o
+mesmo problema.** Não corrigido na E5, de propósito: é anterior a ela e merece etapa própria.
+
+### A20 — "Trimestre" na UI não é o trimestre civil
+
+`DashboardPage.tsx:793` renderiza um `<Select>` de **T1/T2/T3/T4**, e `ExecutivePeriod` carrega o campo
+`trimestre`. Mas `dashboardJanelas` **nunca lê `filtros.trimestre`**: no ramo do trimestre usa
+
+```ts
+const mFim = ano === now.getFullYear() ? now.getMonth() : 11;
+```
+
+ou seja, **janela móvel de 3 meses** terminando no mês corrente — dezembro, quando o ano selecionado não
+é o atual. Verificado na E5-6: período **Jun–Ago**, anterior **Mar–Mai**, com o relógio em agosto.
+
+**O seletor de trimestre do dashboard operacional é decorativo:** muda o estado e não muda número
+nenhum. Foi por isso que o seletor de mês acrescentado ao dashboard executivo **não** ganhou um par de
+trimestre — replicar seria propagar a mentira.
+
+**A E5 preservou a semântica de propósito.** Mudá-la alteraria números sem pedido, no meio de uma
+migração cujo objetivo era não alterar número nenhum além do corrigido pela DIV-1.
+
+**Severidade: UX/semântica, a decidir.** Duas saídas: fazer `trimestre` valer de verdade (T1 = jan–mar…)
+ou remover o seletor e rotular como "Últimos 3 meses". É decisão de negócio, não de código.
+
+### Dívidas conhecidas assumidas na E5 — não corrigidas
+
+| | Dívida | Situação |
+|---|---|---|
+| **D-a** | `if (pedidosErr) return EMPTY_STATS` em `fetchDashboardStats` | **Piorou com a E5.** Antes não havia série a perder; agora um erro na consulta bruta descarta uma série válida que a RPC já entregou. Preservado porque a E5 não redesenharia tratamento de erro. Há comentário no código e teste fixando o comportamento atual |
+| **D-b** | Erros dos lotes de status e de anexos são silenciosos | `fetchDashboardStats` desestrutura só `data` nas linhas 514 e 540. Falha ali zera pipeline/faturado **sem aviso**. Pré-existente, fora do escopo |
+
 ## Verificação visual pendente — Etapa 3.5
 
 Roteiro reproduzível, ~2 minutos, sem tocar em nada:
@@ -828,6 +893,7 @@ que renderiza cada tela em estado de erro.
 | E1 | Escopo centralizado (`app_escopo_atual`) | **CONCLUÍDO** | 2026-08-20 | migration `20260819000300` aplicada; B1–B4, P6, S1–S8, S11, S12, S16 aprovados | fonte única de escopo; owner `postgres`, `search_path=""`; EXECUTE só para owner e `service_role` |
 | E2 | RPC `app_dashboard_serie_diaria` | **CONCLUÍDO** | 2026-08-21 | migration `20260819000400` aplicada; T6 veredito OK | 5 ramos explícitos (A1, A2, B, C, B-grupos), todos em forma medida; teto de 730 dias; sem `ORDER BY` |
 | E3 | Verificação da RPC | **CONCLUÍDO** | 2026-08-21 | T1–T8 + API real; SQL versionado em `supabase/tests/e3_rpc_dashboard_serie_diaria.sql`; resultados em `docs/E2-PLANO-RPC-DASHBOARD.md` §Resultados | pushdown nos 5 ramos; equivalência **sem divergência** em 7 perfis; fail-closed em 4 cenários; 117 ms contra teto de 8 s |
+| E5 | Dashboard consome a RPC | **CONCLUÍDO** | 2026-08-21 | E5-0 a E5-6 em `docs/E5-VERIFICACAO-DASHBOARD.md`; 115 testes de dashboard, suíte 171/171, `tsc` e `eslint` verdes; 9 cenários manuais em 5 perfis, tela × RPC no mesmo instante | 4 campos migrados (`totalVendidoMes`, `totalVendidoMesAnt`, `pedidosNoPeriodo`, `vendasMensais`); os outros 6 seguem na consulta bruta e o `TruncationNotice` continua válido. DIV-1 muda o número do diretor: +12 pedidos e +R$ 61.979,72 no caso medido. Achados novos: A19, A20. Dívidas assumidas: D-a, D-b |
 | 7 | Migrations | PENDENTE | — | — | aguarda D3 + autorização de banco |
 | 8 | Conferido no banco | PENDENTE | — | — | D4 aprovada; depende da Etapa 7 |
 | 9 | Código morto | PENDENTE | — | — | — |

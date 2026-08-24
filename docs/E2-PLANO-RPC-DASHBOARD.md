@@ -2,7 +2,11 @@
 
 > ✅ **E2 APLICADA e E3 VALIDADA em 2026-08-21.** Migration
 > `supabase/migrations/20260819000400_rpc_dashboard_serie_diaria.sql` em produção.
-> Resultados abaixo. Frontend **ainda não migrado** — isso é a E5.
+> Resultados abaixo.
+>
+> ✅ **A RPC passou a ser consumida pelo frontend na E5**, concluída em 2026-08-21 — série do dashboard
+> (`totalVendidoMes`, `totalVendidoMesAnt`, `pedidosNoPeriodo`, `vendasMensais`). Evidência da migração e
+> da verificação manual em **`docs/E5-VERIFICACAO-DASHBOARD.md`**.
 >
 > Base: E1 aplicada e validada (`app_escopo_atual()` em produção, owner `postgres`,
 > `search_path=""`, sem EXECUTE para PUBLIC/`anon`/`authenticated`; **`service_role` tem EXECUTE**).

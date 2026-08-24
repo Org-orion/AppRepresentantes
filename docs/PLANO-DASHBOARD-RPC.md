@@ -284,11 +284,54 @@ grandeza do que a tela mostra, subir o alvo **daquelas colunas** (não global) e
 | E1 | Função auxiliar única de escopo + testes de isolamento | sim (migration) | `drop function` | ✅ **APLICADA e validada em 2026-08-19** — owner `postgres`, `search_path=''`, sem EXECUTE para PUBLIC/anon/authenticated; S1–S9, S11, S12 e S16 aprovados |
 | E2 | RPC `app_dashboard_serie_diaria` + grants + revoke de `anon` | sim | `drop function` | ✅ **APLICADA em 2026-08-21** — `20260819000400`; owner `postgres`, `search_path=""`, EXECUTE só para `authenticated` |
 | E3 | Testes T1–T8 contra a RPC + API real | não | — | ✅ **VALIDADA em 2026-08-21** — pushdown nos 5 ramos, equivalência sem divergência, fail-closed, 117 ms |
-| E4 | `consolidarMeses` (função pura) + teste do dia 1º | não | commit |
-| E5 | `dashboard.ts` passa a usar a RPC, atrás do hook existente | não | commit |
-| E6 | Remover `TruncationNotice` do dashboard | não | commit |
-| E7 | Comunicar que os números do dashboard mudaram | não | — |
+| E4 | Função pura de consolidação + testes | não | commit | ✅ **CONCLUÍDA em 2026-08-21** — saiu como `consolidarDashboardSerie()`, não `consolidarMeses`: consolida a série DIÁRIA da RPC, não meses já agregados |
+| E5 | `dashboard.ts` passa a usar a RPC, atrás do hook existente | não | commit | ✅ **CONCLUÍDA em 2026-08-21** — E5-0 a E5-6. Evidência em `docs/E5-VERIFICACAO-DASHBOARD.md` |
+| E6 | Remover `TruncationNotice` do dashboard | não | commit | 🔴 **NÃO EXECUTAR** — ver abaixo |
+| E7 | Comunicar que os números do dashboard mudaram | não | — | 🔵 **ABERTA e mais urgente que o previsto** — a DIV-1 muda o número do DIRETOR, não só a precisão |
 | E8 | Decidir manutenção do `ANALYZE` | — | — | 🔵 aberta — virou o achado **A18** em `docs/PLANO-SANEAMENTO.md`. `autovacuum` não analisa foreign table |
+
+### E5 — sub-etapas, todas concluídas em 2026-08-21
+
+| | Sub-etapa | Entregue |
+|---|---|---|
+| **E5-0** | Medir a DIV-1 antes de escrever código | diretor com grupo + rep temporário: service antigo **3 pedidos / R$ 203.542,70**, união da RPC **15 / R$ 265.522,42**. Decisão: `reps OR grupos` é o contrato correto |
+| **E5-0b** | Tipos reais do PostgREST | `pedidos` e `valor_total` chegam como `number`; `dia` como `string` `YYYY-MM-DD` |
+| **E5-1** | `dashboardJanelas()` · `dashboardRpcRange()` · `diffDias()` | janela única; máximo real **730 dias**, margem zero; `periodoRange()` passa a derivar da mesma fonte |
+| **E5-2** | `fetchDashboardSerieDiaria()` | valida antes da rede, propaga erro com `code`, ordena no cliente, não preenche dias |
+| **E5-3** | `consolidarDashboardSerie()` | função pura, 6 baldes sempre presentes, sem `Date`, soma o campo `pedidos` |
+| **E5-4** | Integração em `fetchDashboardStats` | 4 campos da RPC; early-return por lista vazia **removido** |
+| **E5-5** | `tsc`, `eslint`, 171 testes | verdes |
+| **E5-6** | Verificação manual | 9 cenários, 5 perfis, tela × RPC no mesmo instante |
+
+### 🔴 E6 — NÃO remover o `TruncationNotice` agora
+
+A E5 tirou do recorte de 1.000 linhas **apenas a série**. Continuam saindo da consulta bruta, e portanto
+continuam sujeitos ao teto do Data API:
+
+`totalPedidos` · `ticketMedio` · `pipeline` · `totalFaturadoMes` · `faturadosNoPeriodo` · `truncado`
+
+O aviso **mudou de significado, não deixou de valer**: antes falava do vendido; agora fala do ticket
+médio, do pipeline e do faturado. Removê-lo esconderia um recorte que ainda existe. A E6 só faz sentido
+quando `numero_pedido` também vier agregado do banco.
+
+### Trimestre — semântica preservada, e ela não é o trimestre civil
+
+`dashboardJanelas` mantém, sem alteração, a regra que já existia: **janela móvel de 3 meses terminando
+no mês corrente** (dezembro, quando o ano selecionado não é o atual). Não é T1/T2/T3/T4.
+
+Foi verificado na E5-6: período atual **Jun–Ago**, anterior **Mar–Mai**. A E5 **não mexeu nisso** de
+propósito — mudar seria alterar número sem pedido. A divergência entre o que a UI sugere e o que o
+cálculo faz está registrada como achado **A20**.
+
+### Limite de 730 dias — validado no navegador
+
+O pior caso do sistema (`periodo = 'ano'` com um 29/02 na união) bate **exatamente** no teto da RPC.
+Testado com `diretor_geral`, ano **2025** → janela `2024-01-01 → 2025-12-31`, **730 dias**:
+tela carregou normalmente, **R$ 161,0M / 3.874 pedidos / +285,9%**, **sem `22023`**.
+
+⚠️ **Margem zero.** Alargar a série de 6 para 12 meses, ou criar um período de 2 anos, estoura o teto.
+O teste `NENHUMA combinação de período/ano/mês passa de 730 dias` em `src/services/dashboard.test.ts`
+trava esse limite.
 
 ### E0 é o próximo passo, e não cria nada
 
