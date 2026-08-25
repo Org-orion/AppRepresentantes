@@ -191,8 +191,13 @@ O que pode demorar é a **primeira execução** dos agregados, não a migration 
 
 **CORRIGIDO em 2026-08-19 — o pressuposto original desta seção estava errado.**
 
-Não existe backup a confirmar: o painel informa *"Free Plan does not include project backups"*. O banco
-do Portal está **sem backup diário e sem PITR** (achado **A9**).
+Não existe backup **gerenciado** a confirmar: o painel informa *"Free Plan does not include project
+backups"*. O banco do Portal está **sem backup diário e sem PITR** (achado **A9**).
+
+> ✅ **Atualização de 2026-08-25.** O dump manual deixou de ser teoria: foi executado, verificado por
+> SHA-256 e teve o restore da aplicação (`public`) ensaiado com 10/10 contagens idênticas à produção.
+> Isso **não** substitui backup automático — continua não havendo — mas significa que o pré-requisito
+> abaixo tem procedimento comprovado, e não apenas escrito. Ver `docs/A9-BACKUP-RESTORE.md`.
 
 Consequência para este plano:
 

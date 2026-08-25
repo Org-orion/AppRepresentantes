@@ -337,8 +337,12 @@ Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
 4. **Código morto** — `services/{clientes,titulos,pedidos}.ts` + hooks correspondentes e 7 componentes órfãos.
 5. **Bundle único de ~3,3 MB**, sem code-splitting por rota.
 6. **Sem observabilidade** — nenhum registro de evento crítico, nenhum alerta.
-7. **Banco do Portal em plano FREE** — pausa por inatividade, sem PITR e com retenção de backup limitada,
-   num sistema de uso diário.
+7. **Banco do Portal em plano FREE** — pausa por inatividade, **sem backup gerenciado nenhum** e sem
+   PITR, num sistema de uso diário. Não é retenção curta: o painel informa *"Free Plan does not include
+   project backups"*. **Parcialmente tratado em 25/08/2026:** existe backup manual verificado por
+   SHA-256, fora do repositório, com restore da aplicação (`public`) testado — 10/10 contagens idênticas
+   à produção. Continuam ausentes a **automação** e a **retenção definida**, e o restore integral da
+   plataforma (`auth`, `storage`) **não** foi testado. Ver `docs/A9-BACKUP-RESTORE.md`. Achado A9.
 8. **`anon` ainda com `select`** em tabelas do banco do ERP.
 9. **Falha transitória desloga sessão válida** — `AuthContext` trata erro ao carregar o perfil como
    ausência de usuário e joga na tela de login.

@@ -254,7 +254,7 @@ provável ausência de pushdown no FDW · ausência de índices (consequência d
 
 | Limitação | Impacto | Relação com o problema |
 |---|---|---|
-| **Sem backup** (A9) | banco de produção sem recuperação | **nenhuma** |
+| **Sem backup gerenciado** (A9) | banco de produção sem backup automático. Desde 25/08/2026 há backup manual verificado, com restore da aplicação testado — mas sem automação nem retenção | **nenhuma** |
 | Pausa por inatividade | portal fora do ar após dias sem uso | nenhuma |
 | Sem branching | não há ambiente para ensaiar migration | indireta |
 | Compute/egress menores | pioram o que já é ineficiente | agravante, não causa |

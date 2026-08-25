@@ -1,7 +1,11 @@
 # Backup manual do banco do Portal
 
-> **Executor: humano.** Motivo: achado **A9** — o projeto está no plano Free e **não tem backup nenhum**
-> (nem diário, nem PITR). Enquanto isso não mudar, backup é rotina manual.
+> **Executor: humano.** Motivo: achado **A9** — o projeto está no plano Free e **não tem backup
+> gerenciado** (nem diário, nem PITR). Enquanto isso não mudar, backup é rotina manual.
+>
+> ✅ **Executado pela primeira vez em 2026-08-25**, com verificação por hash e ensaio de restauração da
+> aplicação. Ver o Registro no fim deste arquivo e `docs/A9-BACKUP-RESTORE.md`.
+> **O A9 continua aberto:** existe cópia verificada, não existe automação nem retenção definida.
 >
 > ⚠️ O arquivo gerado contém **dados pessoais** (usuários, clientes, orçamentos). Guarde como segredo:
 > nada de repositório, e-mail ou pasta compartilhada aberta. O `.gitignore` já bloqueia `backup-*.sql`,
@@ -64,28 +68,52 @@ Confira também, no dump de dados, que aparecem as tabelas que importam:
 `concremapprep_orcamentos`, `concremapprep_orcamento_itens`, `concremapprep_usuarios`,
 `concremapprep_representantes`, `concremapprep_usuario_representantes`, `client_groups`.
 
-## ⚠️ Dois pontos NÃO VERIFICADOS
+## Passo 4 — copiar os objetos do Storage
 
-1. **Usuários do Auth.** Não confirmei se `supabase db dump` inclui o schema `auth` (onde vivem
-   `auth.users` e os hashes de senha). Se **não** incluir, um restore recria o sistema **sem logins** —
-   e o `concremapprep_usuarios.id` referencia `auth.users(id)`. Verifique com:
-   `grep -c "auth.users" backup-portal-dados-*.sql`. Se der zero, precisamos de um dump adicional do
-   schema `auth`, e isso muda o procedimento.
+**Os dumps NÃO cobrem o Storage.** `supabase db dump` e `pg_dump` produzem dump **lógico do banco**: os
+objetos binários do bucket `avatars` — os avatares do perfil — não entram em nenhum dos três arquivos.
+
+Baixe os objetos do bucket e confira o tamanho de cada um contra `storage.objects`. Um backup do Portal
+tem **duas** partes: os dumps e os objetos. Um sem o outro é backup incompleto.
+
+## ✅ Os dois pontos antes NÃO VERIFICADOS — respondidos em 2026-08-25
+
+1. **Usuários do Auth — RESPONDIDO: o dump de dados CONTÉM `auth.users`.** A dúvida era se um restore
+   recriaria o sistema sem nenhum login possível, já que `concremapprep_usuarios.id` referencia
+   `auth.users(id)`. **Não é o caso.** Este procedimento serve como está; não é preciso dump adicional
+   do schema `auth`.
 2. **Foreign tables do ERP.** O schema `erp` são ponteiros para o outro banco, não dados. O dump de dados
-   pode tentar lê-las e ficar lento. Se travar, restrinja com `--schema public`.
+   pode tentar lê-las e ficar lento. Se travar, restrinja com `--schema public`. Na execução de
+   2026-08-25 não houve necessidade.
 
-Anote o resultado dos dois abaixo — são o que decide se este procedimento serve ou precisa mudar.
+## Restauração — ensaiada em 2026-08-25, com limites conhecidos
 
-## Restauração — não testada
+**Foi testada.** Em PostgreSQL **18.6 local isolado**, banco `apprepresentatives_restore_test`, sem
+tocar a produção:
 
-**Nunca foi testada.** Pelo pilar de Backup e Recuperação, backup sem restauração ensaiada **não é
-recuperação garantida** — é um arquivo com nome esperançoso. O ensaio exige um destino, e hoje não há
-(sem Docker e sem projeto de teste).
+- **10/10 tabelas `public`** restauradas;
+- dados `public` restaurados;
+- **contagens comparadas com produção: 10/10 idênticas.**
 
-Enquanto isso não for feito, o estado honesto é: **existe cópia, não existe recuperação comprovada.**
+> ⚠️ **Isto NÃO foi um restore integral da plataforma Supabase.** Os schemas internos gerenciados —
+> `auth` e `storage` — não foram reproduzidos num PostgreSQL vanilla. Para validar o schema da aplicação
+> foram necessárias adaptações **apenas nas cópias locais de teste**: não recriar o role `postgres`,
+> remover `GRANTED BY supabase_admin`, contornar a ausência de `supabase_vault` e de `supabase_realtime`,
+> representar `auth.users`/`auth.uid()` por stubs locais, e conviver com a assinatura diferente de
+> `postgres_fdw_get_connections`.
+>
+> A formulação correta é: **backup de schema e dados da aplicação `public` restaurado e validado com
+> sucesso.** Nada além disso foi provado.
+
+Os `.raw.sql` de schema e dados **foram preservados** — são a saída original do banco, antes das
+adaptações do ensaio. **Não apagar.**
+
+Detalhamento em `docs/A9-BACKUP-RESTORE.md`.
 
 ## Registro
 
-| Data | Quem | Arquivos gerados | Tamanhos | `auth.users` no dump? | Guardado onde |
+| Data | Quem | Arquivos gerados | Verificação | `auth.users` no dump? | Guardado onde |
 |---|---|---|---|---|---|
-| | | | | | |
+| 2026-08-25 | executor humano | `backup-portal-roles-20260825.sql` · `backup-portal-schema-20260825.sql` · `backup-portal-dados-20260825.sql` · os `.raw.sql` de schema e dados · `SHA256SUMS-20260825.txt` · `BACKUP-EVIDENCE-20260825.txt` · 2 objetos do bucket `avatars` | **8/8 artefatos validados por SHA-256**; 39 blocos `COPY`; 10 tabelas `public`; restore-test com 10/10 contagens idênticas | ✅ **sim** | `C:\Users\1kmz\AppRepresentatives-Backups\2026-08-24` — **fora do repositório** |
+
+> **Nenhuma credencial foi gravada** nos artefatos, no manifesto ou no arquivo de evidência.

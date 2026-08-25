@@ -607,7 +607,7 @@ mudar a regra vai ver o teste falhar e precisar decidir conscientemente.
 `includes` por igualdade ou por regex ancorada pode deixar de reconhecer documento legítimo — o que é
 pior. Levantamento simples: `select distinct tipo from erp.concrem_relatorio_entrega_anexos`.
 
-### A9 — O banco do Portal **não tem backup nenhum**
+### A9 — O banco do Portal não tem backup gerenciado — 🟡 PARCIALMENTE TRATADO em 2026-08-25
 
 **Evidência (2026-08-19):** painel do Portal → Database → Backups:
 *"Free Plan does not include project backups. Upgrade to the Pro Plan for up to 7 days of scheduled
@@ -636,6 +636,63 @@ antes**.
 
 **Severidade:** alta. Um erro de operação, uma exclusão acidental ou uma migration mal escrita hoje não
 tem volta.
+
+#### 🟡 Parcialmente tratado em 2026-08-25 — o que mudou, e o que não
+
+**Quatro coisas diferentes, e vale não confundi-las:**
+
+| | Estado |
+|---|---|
+| Backup manual verificado | ✅ **realizado** |
+| Restore da aplicação (`public`) | ✅ **testado com sucesso** |
+| Restore integral da plataforma (`auth`, `storage`) | ❌ **não testado** |
+| Backup automático / gerenciado | ❌ **ainda ausente** |
+
+**O risco não foi eliminado.** O projeto segue no Free Plan, sem backup automático. O que caiu foi a
+parte mais aguda: até 24/08 não havia **nem cópia nem prova de recuperação**.
+
+**Backup executado.** Destino `C:\Users\1kmz\AppRepresentatives-Backups\2026-08-24`, **fora do
+repositório**. Os três dumps na ordem documentada, mais os `.raw.sql` preservados, o manifesto
+`SHA256SUMS-20260825.txt` e o `BACKUP-EVIDENCE-20260825.txt`. **8/8 artefatos validados por SHA-256.**
+Nenhuma credencial gravada em nenhum deles.
+
+**Conteúdo conferido:** 39 blocos `COPY`, 10 tabelas `public` no schema, e — respondendo a dúvida aberta
+desde 19/08 — **o dump de dados contém `auth.users`**. O procedimento documentado serve como está; não
+precisa de dump adicional do schema `auth`.
+
+**Restore ensaiado.** PostgreSQL 18.6 local isolado, banco `apprepresentatives_restore_test`, **sem
+tocar a produção**: 10/10 tabelas `public` restauradas, dados restaurados, e **contagens comparadas com
+produção: 10/10 idênticas**.
+
+> ⚠️ **Não houve restore integral da plataforma Supabase.** Os schemas gerenciados `auth` e `storage`
+> não foram reproduzidos num PostgreSQL vanilla; validar o schema da aplicação exigiu adaptações
+> **apenas nas cópias locais de teste** — não recriar o role `postgres`, remover
+> `GRANTED BY supabase_admin`, ausência de `supabase_vault` e `supabase_realtime`, stubs locais para
+> `auth.users`/`auth.uid()`, e assinatura diferente de `postgres_fdw_get_connections`.
+>
+> A formulação correta é: **backup de schema e dados da aplicação `public` restaurado e validado com
+> sucesso.**
+
+**Storage — ponto cego descoberto e coberto.** O bucket `avatars` é **público**, tinha **2 objetos**, e
+ambos foram baixados com tamanho conferido contra `storage.objects` e hash no manifesto. Nenhum
+documento anterior mencionava esse bucket, e **os dumps não o cobrem**: um backup do Portal tem duas
+partes — os dumps do banco e os objetos do Storage.
+
+**Continua sem cobertura:** backup automático e PITR · retenção e frequência definidas · restore
+integral da plataforma · senha do user mapping do FDW · configurações de painel · secrets das Edge
+Functions e da Vercel.
+
+**Critério de conclusão — proposto aqui, porque a A9 não tinha:**
+
+| | Critério | Estado |
+|---|---|---|
+| 1 | Cópia verificada por hash, fora do repositório | ✅ cumprido |
+| 2 | Cópia **restaurada** e conferida contra a origem | ✅ cumprido para `public` |
+| 3 | Rotina com frequência e retenção definidas | ❌ aberto |
+| 4 | Backup gerenciado, ou decisão explícita de não ter | ❌ aberto |
+
+**Enquanto 3 e 4 estiverem abertos, A9 permanece como risco.** Detalhamento e decisões pendentes em
+`docs/A9-BACKUP-RESTORE.md`.
 
 ### A10 — As views do ERP perderam o `security_barrier`
 
