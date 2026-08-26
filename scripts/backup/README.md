@@ -89,7 +89,7 @@ gitignored e não contém senha.**
 relativo é recusado com `exit 80`: sob o Task Scheduler ele resolveria contra
 `C:\Windows\System32`.
 
-Para o Task Scheduler, preencha também `Tools` e `PgpassFile` — ver §9.
+A tarefa agendada já está ativa e depende de `Tools` e `PgpassFile` absolutos — ver §9.
 
 ---
 
@@ -265,42 +265,67 @@ do 5.1, não tem `ProcessStartInfo.ArgumentList`.
 
 ---
 
-## 9. Task Scheduler
+## 9. Task Scheduler — ATIVO
 
-**Continua NÃO configurado — a execução diária automática ainda NÃO está ativa.**
-Hoje a rotina só roda se alguém a disparar.
+**A execução diária automática está ativa.** A tarefa
+`Concrem Connect - Backup do Portal (A9)` roda o backup `scheduled` todo dia às
+**10:30**, sem intervenção.
 
-**A precondição, porém, foi cumprida.** O primeiro ciclo manual real terminou com
-sucesso em **2026-08-26, exit 0** (set `2026-08-26T144106`): o conjunto local foi
-selado e verificado por fora, e a **cópia externa cifrada desse ciclo foi
-descriptografada, extraída e validada** — byte a byte igual ao set local. Ver
-`docs/A9-ROTINA-BACKUP.md` §8.
+| | |
+|---|---|
+| Estado | `Enabled = True` · `State = Ready` |
+| Usuário | `kmz\1kmz` — **não** SYSTEM |
+| LogonType / RunLevel | **`Interactive`** / **`Limited`** (não elevada) |
+| Trigger | diário, **10:30** |
+| Ação | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` |
+| Start in | `C:\aplicações\AppRepresentantes-main\scripts\backup` |
+| Settings | `MultipleInstances = IgnoreNew` · `StartWhenAvailable` · timeout **1 h** · retry **2 × 30 min** |
+| Condições | não exige AC · não para em bateria · rede **não** é condição · `WakeToRun = False` |
 
-**Próximo passo operacional: configurar e validar o Task Scheduler.** Enquanto isso
-não acontecer, o RPO real é o intervalo entre execuções lembradas à mão, e não as
-24 h da política.
+Argumentos:
 
-A tarefa agendada não herda **nada** da sua sessão: nem `PATH`, nem diretório
-corrente, nem perfil do PowerShell, nem `%APPDATA%` (se rodar como SYSTEM). O script
-já se defende disso:
+```
+-NoProfile -ExecutionPolicy Bypass -File "C:\aplicações\AppRepresentantes-main\scripts\backup\Invoke-PortalBackup.ps1" -Reason scheduled -ConfigPath "C:\aplicações\AppRepresentantes-main\scripts\backup\backup.config.psd1"
+```
+
+**Validada em 2026-08-26** com um disparo real via `Start-ScheduledTask`, feito
+primeiro com `-WhatIfRetention`: `LastTaskResult = 0x0`, set
+`2026-08-26T164034`, `exitCode 0`, `externalCopy success`, `Verify-PortalBackup`
+exit 0, cópia externa com hash igual ao sidecar e **status verde no OneDrive**.
+Só depois disso o `-WhatIfRetention` foi removido. Detalhamento em
+`docs/A9-ROTINA-BACKUP.md` §9.
+
+**Retenção: habilitada, primeira exclusão real ainda não observada.** Com 2
+conjuntos e `Daily = 7` não há nada fora da janela; a primeira remoção deve
+ocorrer por volta do **8º ciclo diário**. Confira o log daquele dia procurando
+`REMOVER` e `retenção externa: removendo`.
+
+### Por que `Interactive` e não elevada
+
+O `.pgpass` e a passphrase pertencem ao usuário, o OneDrive roda no contexto dele
+e **recusa operar sob token elevado** — marcar *"executar com privilégios mais
+altos"* quebraria a cópia externa. O script não precisa de elevação. SYSTEM não
+serve: `%APPDATA%` seria outro e o OneDrive não estaria em execução.
+
+**Custo declarado:** com `Interactive`, **um dia sem logon é um dia sem backup**.
+`StartWhenAvailable` recupera o horário perdido no próximo logon.
+
+### O que a tarefa não herda da sua sessão
+
+Nem `PATH`, nem diretório corrente, nem perfil do PowerShell, nem `%APPDATA%`. O
+script já se defende disso:
 
 | Dependência | Como é neutralizada |
 |---|---|
 | diretório corrente | tudo resolve a partir de `$PSScriptRoot`; `-ConfigPath` relativo resolve contra o diretório do script, não contra o CWD; `WorkingDirectory` de todo processo filho é fixado |
 | `PATH` | `Tools` na config; o fallback `Get-Command` existe para uso manual |
 | variáveis `PG*` herdadas | `PGPASSWORD`, `PGSERVICE`, `PGSERVICEFILE`, `PGHOST`, `PGPORT`, `PGUSER`, `PGDATABASE` são **removidas** antes de qualquer conexão — `PGPASSWORD` herdado teria precedência sobre o `.pgpass` e trocaria a fonte da senha em silêncio |
-| perfil do PowerShell | rode com `-NoProfile` |
+| perfil do PowerShell | a tarefa usa `-NoProfile` |
 | caminho relativo na config | recusado com `exit 80` |
 
-**Antes de agendar, preencha na config real:**
-
-1. **`Tools`** — os seis caminhos absolutos;
-2. **`PgpassFile`** — absoluto. Se a tarefa rodar como SYSTEM, o `%APPDATA%` é outro
-   e o default apontaria para o arquivo errado;
-3. **`BackupRoot`**, **`ExternalBackupRoot`**, **`GpgPassphraseFile`** — absolutos.
-
-Na tarefa: caminho absoluto para o `powershell.exe` e para o script, `-NoProfile`, e
-`Start in` definido.
+Por isso a config real tem **`Tools`** com os seis caminhos absolutos e
+**`PgpassFile`** absoluto, além de `BackupRoot`, `ExternalBackupRoot` e
+`GpgPassphraseFile`.
 
 ---
 

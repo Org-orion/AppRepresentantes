@@ -6,25 +6,26 @@
 > |---|---|
 > | Backup manual verificado (25/08) | ✅ **realizado** |
 > | Restore da aplicação (`public`) | ✅ **testado com sucesso** |
-> | **Rotina — primeiro ciclo real, execução MANUAL** | ✅ **concluído em 26/08, exit 0** |
-> | **Execução diária automática (Task Scheduler)** | ❌ **não configurada** |
-> | **Cópia externa cifrada — recuperação testada** | ✅ **descriptografada, extraída e validada** |
-> | Retenção em execução real | 🟡 **só em `WhatIf`** |
+> | Rotina — primeiro ciclo real, execução manual | ✅ **concluído em 26/08, exit 0** |
+> | Cópia externa cifrada — recuperação testada | ✅ **descriptografada, extraída e validada** |
+> | **Execução diária automática (Task Scheduler)** | ✅ **ATIVA às 10:30**, validada com exit 0 |
+> | **Retenção** | ✅ habilitada · 🟡 **primeira exclusão real ainda não observada** |
 > | Restore integral da plataforma (`auth`, `storage`) | ❌ **não testado** |
 > | Backup gerenciado / PITR | ❌ **ausente** |
 >
 > **O risco A9 NÃO foi eliminado.** O projeto segue no Supabase Free Plan, sem backup
 > gerenciado e sem PITR. O que mudou é grande: além da cópia manual verificada de 25/08,
-> agora existe uma **rotina que rodou de verdade**, produziu um conjunto selado, cifrou uma
-> segunda cópia fora da máquina e teve essa cópia **recuperada e conferida byte a byte**.
+> existe uma **rotina que roda sozinha todo dia às 10:30**, produz um conjunto selado, cifra
+> uma segunda cópia fora da máquina, e essa cópia já foi **recuperada e conferida byte a byte**.
 >
-> ⚠️ **Isso não significa backup automático.** O ciclo foi **disparado à mão**; o Task
-> Scheduler não está configurado e **a execução diária automática não está ativa**.
+> 📌 **Marcos de 2026-08-26.** Primeiro ciclo manual (`setId 2026-08-26T144106`, exit 0) e
+> primeira execução via Task Scheduler (`setId 2026-08-26T164034`, `LastTaskResult 0x0`).
+> Detalhamento em `docs/A9-ROTINA-BACKUP.md` §8 e §9.
 >
-> 📌 **Primeiro ciclo real — 2026-08-26, `setId 2026-08-26T144106`, exit 0.** Detalhamento,
-> decisões operacionais e o que ainda falta em `docs/A9-ROTINA-BACKUP.md` §8 e §9.
-> **O que continua aberto:** a retenção rodou em `WhatIf` e nunca apagou nada de verdade, o
-> Task Scheduler não está configurado, e não há backup gerenciado nem PITR.
+> ⚠️ **O que continua aberto:** a retenção está **habilitada operacionalmente**, mas sua
+> **primeira exclusão real ainda não foi observada** — existem 2 conjuntos e a política mantém
+> 7 diários, então não há o que apagar; não há backup gerenciado nem PITR; e o restore integral
+> da plataforma segue sem teste.
 ---
 
 ## 1. O que motivou
@@ -154,17 +155,20 @@ cópia dos objetos do Storage. Um sem o outro é backup incompleto.
 |---|---|---|
 | ❌ | **Backup automático / gerenciado** | plano Free não inclui. **Este é o núcleo do A9, e continua aberto.** Decisão registrada: permanecer no Free como aceitação explícita de risco, com quatro gatilhos de reavaliação — ver `docs/A9-ROTINA-BACKUP.md` §1.1 |
 | ❌ | **PITR** | idem |
-| 🟡 | Retenção definida | **política aprovada** (7/4/3) e implementada; no primeiro ciclo real rodou apenas em **`WhatIf`** (1 mantido, 0 a remover). O caminho **destrutivo** nunca foi exercitado |
-| 🟡 | Frequência definida | **política aprovada** (diária + `prechange`); a rotina rodou **uma vez, manualmente**, e ainda não está agendada |
-| ✅ | **Segunda cópia, cifrada e fora da máquina** | AES256 no OneDrive, sincronização confirmada, **recuperação testada** — ver `docs/A9-ROTINA-BACKUP.md` §8.3 |
+| 🟡 | Retenção | **política aprovada** (7/4/3), implementada e **habilitada na tarefa agendada**. O caminho **destrutivo** ainda não foi observado: com 2 conjuntos e `Daily = 7` não há o que apagar — a primeira remoção deve ocorrer por volta do 8º ciclo diário |
+| ✅ | Frequência | **política aprovada** (diária + `prechange`) e **em vigor**: a tarefa do Task Scheduler executa o backup `scheduled` **todo dia às 10:30** |
+| ✅ | **Segunda cópia, cifrada e fora da máquina** | AES256 no OneDrive, sincronização confirmada, **recuperação testada** — ver `docs/A9-ROTINA-BACKUP.md` §8.3. ⚠️ `exit 0` prova gravação local e hash, **não** upload concluído: a sincronização é assíncrona e a conferência do status verde continua humana |
+| ✅ | **Execução diária automática** | Task Scheduler **ATIVO** — diário às 10:30, `Interactive` + `Limited`, validado com exit 0 — ver `docs/A9-ROTINA-BACKUP.md` §9 |
 | ❌ | Restore integral da plataforma | ver §5 |
 | ❌ | **Senha do user mapping do FDW** | não está em nenhum artefato de backup, por decisão de segurança. Rotacioná-la sem atualizar o mapping derruba metade do sistema — ver `docs/INCIDENTE-2026-08-19-FDW.md` |
 | ❌ | Configurações de painel | `Max rows = 1000`, agregações desabilitadas, CAPTCHA do Auth, política de senha |
 | ❌ | Secrets das Edge Functions e da Vercel | por nome apenas: `SUPABASE_SERVICE_ROLE_KEY`, `TURNSTILE_SECRET_KEY`, `VITE_*` |
 
-**O RPO real ainda é o intervalo entre execuções manuais.** A política define 24 h, mas
-enquanto a rotina não estiver agendada quem determina o intervalo é quem lembra de rodá-la.
-Até 26/08 houve **uma** execução bem-sucedida.
+**O RPO passou a depender da tarefa agendada, e não mais da memória de alguém.** A política
+define 24 h e a tarefa roda diariamente às 10:30. Duas ressalvas: a tarefa é `Interactive`,
+então **um dia sem logon é um dia sem backup** (mitigado por `StartWhenAvailable`, que
+recupera o horário perdido no próximo logon); e o RPO só se confirma acompanhando a série de
+execuções. Até 26/08 houve **duas** execuções bem-sucedidas — uma manual, uma pela tarefa.
 
 ## 8. Decisões que continuam com o dono
 
@@ -198,16 +202,16 @@ Nenhuma delas foi tomada nesta rodada:
 |---|---|---|
 | 1 | Existe cópia verificada por hash, fora do repositório | ✅ **cumprido** — 8/8 artefatos |
 | 2 | A cópia foi **restaurada** e conferida contra a origem | ✅ **cumprido** para `public` — 10/10 contagens |
-| 3 | Existe rotina com frequência e retenção definidas, **que executa sozinha** | 🟡 **parcial** — validada em **uma execução manual**, com retenção em `WhatIf`. **Sem agendamento: não executa sozinha** |
+| 3 | Existe rotina com frequência e retenção definidas, **que executa sozinha** | ✅ **cumprido** — Task Scheduler ativo, diário às 10:30, validado com `LastTaskResult 0x0`; retenção habilitada |
 | 4 | Existe backup gerenciado, ou decisão explícita de não ter | 🟡 **parcial** — não há backup gerenciado; a permanência no Free está registrada como **aceitação explícita de risco**, com quatro gatilhos de reavaliação |
 | 5 | A segunda cópia é **recuperável**, não apenas íntegra | ✅ **cumprido** — decrypt + extract + verify sobre o artefato sincronizado |
 
 **A9 permanece 🟡 PARCIALMENTE TRATADO.** Até 24/08 não havia nem cópia nem prova de
 recuperação; em 25/08 passou a haver as duas, manualmente; em 26/08 passou a haver uma
-**rotina que, quando executada, sela, cifra, e cuja cópia externa comprovadamente volta**.
+**rotina agendada que sela, cifra, e cuja cópia externa comprovadamente volta**.
 
-O que falta agora é de outra natureza: **agendar** — hoje a rotina só roda se alguém a
-disparar, e **a execução diária automática não está ativa** —, **exercitar a retenção de
-verdade** — ela nunca apagou nada — e a decisão de negócio sobre backup gerenciado e PITR.
+O que falta agora é de outra natureza: **observar a retenção apagando de verdade** — ela está
+habilitada, mas ainda não teve o que apagar — e a decisão de negócio sobre backup gerenciado
+e PITR.
 O restore integral da plataforma (`auth`, `storage`) segue sem teste, e nada nesta rodada
 mudou isso.

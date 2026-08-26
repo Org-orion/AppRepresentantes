@@ -2,8 +2,8 @@
 
 > ⚠️ **ESTE É O PROCEDIMENTO DE CONTINGÊNCIA.** O caminho preferencial é o script de
 > `scripts/backup/` — ver `scripts/backup/README.md` e `docs/A9-ROTINA-BACKUP.md`. Ele **já executou
-> contra produção com sucesso** em 26/08/2026 (exit 0), numa execução **manual**: o **Task Scheduler
-> não está configurado** e a execução diária automática **não está ativa**. Use este documento quando
+> contra produção com sucesso** em 26/08/2026 (exit 0) e roda **automaticamente todo dia às 10:30**
+> pelo Task Scheduler. Use este documento quando
 > o script falhar, quando as ferramentas dele não estiverem disponíveis, ou quando for preciso um
 > backup fora do fluxo.
 >

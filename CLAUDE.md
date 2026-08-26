@@ -345,10 +345,17 @@ Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
    `2026-08-26T144106`, 8 artefatos, 10 tabelas `public`, 39 blocos `COPY`, `auth.users` presente,
    2 objetos de Storage. O set local foi verificado por fora (8/8 íntegros) e a **cópia externa cifrada
    AES256 no OneDrive foi descriptografada, extraída e validada** — byte a byte igual ao set local.
-   **Continua aberto:** a retenção rodou só em `WhatIf` e nunca apagou nada; o **Task Scheduler não
-   está configurado e a execução diária automática NÃO está ativa** — a rotina só roda se alguém a
-   disparar; não há **backup gerenciado nem PITR**; o **restore integral da plataforma
-   (`auth`, `storage`) não foi testado**. Permanência no Free registrada como **aceitação explícita de
+   **A execução diária automática está ATIVA desde 26/08/2026:** a tarefa
+   `Concrem Connect - Backup do Portal (A9)` roda todo dia às **10:30** como `kmzkmz`, com
+   `LogonType Interactive` e `RunLevel Limited` — **não** SYSTEM, **não** elevada, porque o `.pgpass` e
+   a passphrase pertencem ao usuário e o **OneDrive recusa operar sob token elevado**. Validada por
+   execução real (`LastTaskResult 0x0`, set `2026-08-26T164034`) feita primeiro com
+   `-WhatIfRetention`; só depois a flag foi removida. **Continua aberto:** a retenção está
+   **habilitada operacionalmente**, mas sua **primeira exclusão real ainda não foi observada** — com
+   2 conjuntos e `Daily = 7` não há o que apagar, e a primeira remoção deve ocorrer por volta do 8º
+   ciclo diário; não há **backup gerenciado nem PITR**; o **restore integral da plataforma
+   (`auth`, `storage`) não foi testado**. `exit 0` prova gravação local e hash na pasta do OneDrive,
+   **não** upload concluído — a conferência do status verde continua humana. Permanência no Free registrada como **aceitação explícita de
    risco**, com quatro gatilhos de reavaliação. Ver `docs/A9-ROTINA-BACKUP.md` §8 e §9 e
    `docs/A9-BACKUP-RESTORE.md`. Achado A9.
 8. **`anon` ainda com `select`** em tabelas do banco do ERP.

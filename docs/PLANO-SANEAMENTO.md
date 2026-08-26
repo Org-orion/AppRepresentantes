@@ -724,16 +724,19 @@ seguidas apagariam todos os backups bons.
 `logs/RUN-RESULT-<setId>.json`, **fora** do set — escrever dentro dele invalidaria o manifesto recém
 conferido.
 
-**Falta para ativar:** `.pgpass` com ACL validada · destino externo real · passphrase do GPG · primeiro
-ciclo completo executado e verificado · retenção observada em execução real · Task Scheduler.
+**Faltava para ativar, em 25/08:** `.pgpass` com ACL validada · destino externo real · passphrase do
+GPG · primeiro ciclo completo executado e verificado · retenção observada em execução real · Task
+Scheduler. **Todos cumpridos até 26/08, exceto a observação da retenção apagando** — ver as duas
+subseções seguintes.
 
 Decisões, arquitetura, parâmetros pinados e resultados dos testes offline em `docs/A9-ROTINA-BACKUP.md`.
 
 #### Primeiro ciclo real executado — 2026-08-26, **manualmente** (exit 0)
 
 A rotina deixou de ser código testado offline. Rodou contra produção, do começo ao fim — **disparada à
-mão**. `-Reason scheduled` é o *tipo* de backup, que define a categoria na retenção GFS; **nenhuma tarefa
-agendada existe**, e a execução diária automática **não está ativa**.
+mão** — o Task Scheduler ainda não existia neste momento; foi criado depois, com base nesta execução.
+`-Reason scheduled` é o *tipo* de backup, que define a categoria na retenção GFS, e não implica
+agendamento.
 
 | | |
 |---|---|
@@ -784,7 +787,79 @@ de regressão (**I** e **J**). Escaparam da suíte porque uma dependia da ferram
 | ✅ | segunda cópia cifrada · sincronização confirmada · **recuperação da cópia externa testada** |
 | ✅ | permanência no Free documentada como aceitação de risco |
 | 🟡 | **retenção apenas em `WhatIf`** — o caminho destrutivo nunca foi exercitado |
-| ❌ | **Task Scheduler não configurado — a execução diária automática não está ativa** |
+| → | **Task Scheduler** — configurado e validado logo em seguida; ver a subseção abaixo |
+| ❌ | **backup gerenciado / PITR** — o plano Free não inclui; é o núcleo do A9 |
+| ❌ | **restore integral da plataforma (`auth`, `storage`)** |
+
+**A9 continua 🟡 PARCIALMENTE TRATADO.** Nada aqui equivale a restore integral do Supabase: o provado
+segue sendo schema e dados da aplicação `public`.
+
+#### Task Scheduler ativado e validado — 2026-08-26
+
+**A execução diária automática está ATIVA.** A tarefa `Concrem Connect - Backup do Portal (A9)` roda o
+backup `scheduled` todo dia às **10:30**, sem intervenção. Próxima execução prevista no momento do
+registro: **27/08/2026 10:30**.
+
+| | |
+|---|---|
+| Estado | `Enabled = True` · `State = Ready` |
+| Usuário | `1kmz` (`kmz\1kmz`) — **não** SYSTEM, **não** elevada |
+| LogonType / RunLevel | **`Interactive`** / **`Limited`** |
+| Trigger | diário, **10:30** |
+| Ação | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`, Start in `…\scripts\backup` |
+| Settings | `MultipleInstances = IgnoreNew` · `StartWhenAvailable` · timeout **1 h** · retry **2 × 30 min** |
+| Condições | não exige AC · não para em bateria · rede **não** é condição do Scheduler · `WakeToRun = False` |
+
+Argumentos: `-NoProfile -ExecutionPolicy Bypass -File "…\Invoke-PortalBackup.ps1" -Reason scheduled
+-ConfigPath "…\backup.config.psd1"`.
+
+**Por que `Interactive` + `Limited`, e não SYSTEM.** O `.pgpass` e a passphrase do GPG pertencem ao
+usuário, com ACL restrita a ele; o OneDrive roda no contexto dele; e o **OneDrive recusou execução sob
+PowerShell elevado** — marcar *"executar com privilégios mais altos"* quebraria a cópia externa. O script
+não precisa de elevação. SYSTEM não serve: `%APPDATA%` seria outro e o cliente de sincronização não
+estaria em execução. **Custo declarado:** um dia sem logon é um dia sem backup, mitigado por
+`StartWhenAvailable`.
+
+**Validação.** A tarefa foi criada **com `-WhatIfRetention`** e disparada por `Start-ScheduledTask` —
+estrear agendamento e retenção destrutiva no mesmo disparo seria imprudente. Resultado
+`LastTaskResult = 0` (`0x0`), set **`2026-08-26T164034`**:
+
+| | |
+|---|---|
+| `exitCode` · `failedStage` | **0** · **null** |
+| `externalCopy` · `retention` | **`success`** · **`whatif`** |
+| Sanidade | `public` = 10 · `COPY public` = 10 · `COPY` total = 39 · `auth.users` presente |
+| Storage · manifesto | 2 objetos · **8 artefatos** |
+| `Verify-PortalBackup` | **exit 0** |
+| Cópia externa | `.tar.gpg` + `.sha256`, **hash externo = sidecar**, **status verde no OneDrive** |
+| Retenção | **nenhuma exclusão real**; nenhum set ou staging existente removido |
+
+**Liberação da retenção real.** Validado o ciclo e confirmada a sincronização, `-WhatIfRetention` e a
+`-Note` de primeira execução foram removidos da tarefa. A alteração foi verificada por **diff de retrato
+sobre 26 propriedades**: **exatamente uma mudou — `Action.Arguments`**. A tarefa **não** foi disparada
+novamente após a edição.
+
+**Retenção: habilitada, primeira exclusão real ainda não observada.** Não é limitação de código — com
+**2 conjuntos** e `Daily = 7` não há nada fora da união do keep-set GFS; o log do ciclo de validação
+registrou `retenção: 2 mantidos, 0 a remover`. A primeira remoção deve ocorrer **aproximadamente a partir
+do 8º ciclo diário**, dependendo de como as categorias semanal e mensal se sobrepõem. Nenhum teste
+destrutivo artificial foi feito para antecipá-la.
+
+**Limitação do OneDrive, registrada.** `exit 0` prova gravação local íntegra no diretório sincronizado e
+hash idêntico entre origem e destino — **não** prova upload concluído, que é assíncrono e fora do alcance
+do script. No ciclo `2026-08-26T164034` os dois arquivos foram **conferidos visualmente com status
+verde**, portanto **esse ciclo específico teve a sincronização concluída**; isso não se estende
+automaticamente aos seguintes.
+
+**Estado após esta rodada:**
+
+| | |
+|---|---|
+| ✅ | rotina implementada · primeiro ciclo manual real · backup local selado e verificado |
+| ✅ | cópia externa cifrada, sincronizada e **recuperada** · permanência no Free como aceitação de risco |
+| ✅ | **Task Scheduler configurado e validado** · **execução diária automática ATIVA às 10:30** |
+| ✅ | **retenção habilitada operacionalmente** na configuração final da tarefa |
+| 🟡 | **caminho destrutivo da retenção ainda não observado em execução real** |
 | ❌ | **backup gerenciado / PITR** — o plano Free não inclui; é o núcleo do A9 |
 | ❌ | **restore integral da plataforma (`auth`, `storage`)** |
 

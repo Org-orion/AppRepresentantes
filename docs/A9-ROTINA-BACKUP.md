@@ -1,20 +1,17 @@
 # A9 — Rotina operacional de backup
 
-> **Estado: rotina implementada e validada em primeiro ciclo MANUAL real —
-> 2026-08-26, exit 0.** O set local foi verificado por fora, e a cópia externa
-> cifrada foi **descriptografada, extraída e validada**. Ver §8.
+> **Estado: rotina em operação agendada — execução diária automática ATIVA às
+> 10:30.** A tarefa `Concrem Connect - Backup do Portal (A9)` está registrada,
+> habilitada e foi validada por uma execução real via Task Scheduler
+> (`LastTaskResult = 0x0`). Próxima execução prevista: **27/08/2026 10:30**.
+> Ver §8 (ciclo manual), §9 (Task Scheduler) e §10 (o que ainda falta).
 >
-> ⚠️ **A execução diária automática NÃO está ativa.** O único ciclo real foi
-> disparado à mão; o **Task Scheduler ainda não foi configurado**. O que está
-> provado é que a rotina *funciona quando é executada*, não que ela *roda sozinha*.
->
-> **O A9 permanece 🟡 PARCIALMENTE TRATADO.** A retenção rodou apenas em
-> `WhatIf`, o Task Scheduler não está configurado, não há backup gerenciado nem
-> PITR, e o restore integral da plataforma (`auth`, `storage`) continua sem teste.
-> Ver §9.
+> **O A9 permanece 🟡 PARCIALMENTE TRATADO.** A retenção está **habilitada
+> operacionalmente**, mas sua **primeira exclusão real ainda não foi observada** —
+> existem 2 conjuntos e a política mantém 7 diários. Não há backup gerenciado nem
+> PITR, e o restore integral da plataforma (`auth`, `storage`) segue sem teste.
 >
 > Implementação em `scripts/backup/`. Operação em `scripts/backup/README.md`.
-
 ---
 
 ## 1. Decisões aprovadas
@@ -39,9 +36,8 @@ o banco, a recuperação depende exclusivamente da cópia externa.
 
 ### 1.2 Frequência
 
-> ⚠️ Isto é a **política aprovada**, não o estado atual. Até 26/08/2026 houve **uma**
-> execução, **manual**. Sem Task Scheduler configurado, a frequência real é a que
-> alguém lembrar de executar.
+> ✅ **Em vigor desde 26/08/2026.** A tarefa do Task Scheduler executa o backup
+> `scheduled` **diariamente às 10:30**. Ver §9.
 
 | | |
 |---|---|
@@ -79,8 +75,12 @@ automaticamente depois disso. `manual` nunca é removido automaticamente.
 | Verificação de integridade | **em toda execução** |
 | Restore-test da aplicação `public` | **trimestral**, e após qualquer mudança material no pipeline de backup/restore |
 
-**O RPO de 24 h só se cumpre com a rotina agendada rodando.** Executada à mão, na
-prática o RPO vira semanal — e é isso que dispara o gatilho 3 de reavaliação do plano.
+**O RPO de 24 h depende da rotina agendada rodando — e ela agora roda**, diariamente
+às 10:30 (§9). Duas ressalvas honestas sobre o RPO efetivo: a tarefa é `Interactive`,
+então **um dia sem logon é um dia sem backup** (mitigado por `StartWhenAvailable`, que
+recupera o horário perdido no próximo logon); e o RPO só se confirma com a série de
+execuções sendo acompanhada. Executada à mão, na prática o RPO viraria semanal — era
+esse o cenário que disparava o gatilho 3 de reavaliação do plano.
 
 **Justificativa.** Orçamento é o trabalho do representante: perder um dia significa
 refazer o dia. Sem o Portal, ninguém monta orçamento e a equipe comercial não vê o
@@ -242,9 +242,9 @@ Baseline de 2026-08-25: bucket `avatars`, público, 2 objetos.
 A rotina deixou de ser código testado offline. Rodou contra o banco de produção,
 do começo ao fim, e o resultado foi verificado por fora.
 
-**Disparo: manual, por um operador.** `-Reason scheduled` diz o *tipo* de backup —
-o que define a categoria na retenção GFS — e não significa que algo o agendou.
-**Nenhuma tarefa agendada existe.**
+**Disparo: manual, por um operador** — o Task Scheduler ainda não existia neste
+momento; foi criado depois, com base nesta execução (§9). `-Reason scheduled` diz o
+*tipo* de backup, o que define a categoria na retenção GFS, e não implica agendamento.
 
 **Comando:** `-Reason scheduled` com `-WhatIfRetention`, configuração real.
 **Resultado: exit 0.**
@@ -331,7 +331,148 @@ regressão (**I** e **J**).
 
 ---
 
-## 9. O que falta para A9 deixar de ser parcial
+## 9. Task Scheduler — configurado e validado em 2026-08-26
+
+**A execução diária automática está ATIVA.** A tarefa
+`Concrem Connect - Backup do Portal (A9)` roda o backup `scheduled` todo dia às
+**10:30**. Próxima execução prevista quando esta seção foi escrita: **27/08/2026
+10:30**.
+
+### 9.1 Configuração registrada
+
+| | |
+|---|---|
+| Nome | `Concrem Connect - Backup do Portal (A9)` |
+| Estado | `Enabled = True` · `State = Ready` |
+| **Usuário** | `1kmz` (`kmz\1kmz`) — **não** SYSTEM |
+| **LogonType** | **`Interactive`** — só executa com o usuário conectado |
+| **RunLevel** | **`Limited`** — **não elevada** |
+| Trigger | diário, **10:30** |
+| Ação | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` |
+| WorkingDirectory | `C:\aplicações\AppRepresentantes-main\scripts\backup` |
+
+Argumentos finais:
+
+```
+-NoProfile -ExecutionPolicy Bypass -File "C:\aplicações\AppRepresentantes-main\scripts\backup\Invoke-PortalBackup.ps1" -Reason scheduled -ConfigPath "C:\aplicações\AppRepresentantes-main\scripts\backup\backup.config.psd1"
+```
+
+| Settings | | Condições | |
+|---|---|---|---|
+| `MultipleInstances` | `IgnoreNew` | não exige energia AC | ✅ |
+| `StartWhenAvailable` | `True` | não para ao entrar em bateria | ✅ |
+| timeout | **1 hora** | rede **não** é condição do Scheduler | ✅ |
+| `RestartCount` / `RestartInterval` | **2** / **30 min** | `WakeToRun` | `False` |
+
+`MultipleInstances = IgnoreNew` **não é preferência, é requisito**: o script não
+tem lock próprio, então esta é a única barreira contra duas execuções escreverem
+no mesmo `staging`/`sets`.
+
+Rede fora das condições do Scheduler é deliberado: sem conectividade o script
+falha explicitamente com `exit 13` e deixa log. Uma condição de rede faria a
+execução ser **silenciosamente pulada**, que é pior.
+
+### 9.2 Por que `Interactive` + `Limited`, e não SYSTEM
+
+Quatro razões, e nenhuma é estilística:
+
+1. **`.pgpass` e a passphrase do GPG pertencem ao usuário**, com ACL restrita a
+   ele. Sob outro contexto o `%APPDATA%` é outro e a credencial não seria
+   alcançada — a falha se disfarçaria de "senha errada".
+2. **O OneDrive roda no contexto do usuário.** Sem sessão dele, o cliente de
+   sincronização não está em execução: o `.tar.gpg` cairia no disco e só subiria
+   no próximo logon, sem nenhum sinal disso no `RUN-RESULT`.
+3. **O OneDrive recusou execução sob PowerShell elevado.** A elevação troca o
+   token e o provedor de sincronização do usuário não é alcançado. Marcar
+   *"executar com privilégios mais altos"* **quebraria a cópia externa** — e o
+   script não precisa de elevação: não tem `#Requires -RunAsAdministrator`, não
+   chama `RunAs`, e o ciclo manual validado rodou numa sessão não elevada.
+4. **SYSTEM não serve a esta arquitetura**, pelas três razões acima somadas.
+
+**O custo, declarado:** com `Interactive`, se ninguém fizer logon num dia, **não
+há backup naquele dia**. É o preço de garantir o OneDrive operacional.
+`StartWhenAvailable = True` recupera o horário perdido no próximo logon.
+
+### 9.3 Como foi validada — primeiro com `-WhatIfRetention`
+
+A tarefa nunca havia executado neste contexto: a sessão de tarefa não é a sessão
+interativa, e token, variáveis e ambiente podem diferir. Estrear o agendamento e
+a retenção destrutiva no mesmo disparo seria imprudente. Por isso a tarefa foi
+**criada com `-WhatIfRetention`** e disparada por `Start-ScheduledTask`.
+
+**Resultado — `LastTaskResult = 0` (`0x0`):**
+
+| | |
+|---|---|
+| `setId` | **`2026-08-26T164034`** · `reason` `scheduled` |
+| `exitCode` · `failedStage` | **0** · **null** |
+| `externalCopy` · `retention` | **`success`** · **`whatif`** |
+| Sanidade | `public` = **10** tabelas · `COPY public` = **10** · `COPY` total = **39** · **`auth.users` presente** |
+| Storage · manifesto | **2 objetos** · **8 artefatos** |
+| `Verify-PortalBackup` no set | **exit 0** |
+| Cópia externa | `.tar.gpg` + `.sha256` gerados · **hash externo = sidecar** |
+| OneDrive | **ambos os arquivos com status verde — sincronização concluída neste ciclo** |
+| Retenção | **nenhuma exclusão real** · nenhum set ou staging existente removido |
+
+Os números reproduzem os dois ciclos anteriores. **A tarefa agendada produz o
+mesmo resultado que a execução manual** — era exatamente o que faltava provar.
+
+### 9.4 Liberação da retenção real
+
+Validado o ciclo acima e confirmada a sincronização, a tarefa foi editada:
+**`-WhatIfRetention` removido**, junto com a `-Note` de primeira execução.
+
+A alteração foi verificada por **diff de retrato sobre 26 propriedades**
+(identificação, principal, trigger, ação, settings e condições):
+**exatamente uma mudou — `Action.Arguments`.** Usuário, `Interactive`,
+`Limited`, horário, `WorkingDirectory`, `MultipleInstances`,
+`StartWhenAvailable`, timeout, retries e condições ficaram idênticos. **A tarefa
+não foi disparada novamente após a edição.**
+
+### 9.5 Retenção: habilitada, ainda não observada apagando
+
+**A retenção está habilitada operacionalmente** — `-WhatIfRetention` não está
+mais nos argumentos, então a próxima execução pode apagar.
+
+**Mas a primeira exclusão real ainda não foi observada.** Não é limitação de
+código: com **2 conjuntos** existentes e `Daily = 7`, simplesmente não há nada
+fora da janela. O log do ciclo de validação registrou
+`retenção: 2 mantidos, 0 a remover`.
+
+A primeira remoção deve ocorrer quando existir um conjunto realmente fora da
+**união** do keep-set GFS — **aproximadamente a partir do 8º ciclo diário**,
+dependendo de como as categorias semanal e mensal se sobrepõem. **Vale conferir o
+log daquele dia especificamente**, procurando as linhas `REMOVER` e
+`retenção externa: removendo`.
+
+Nenhum teste destrutivo artificial foi feito para antecipar isso.
+
+### 9.6 O que o `exit 0` não prova sobre o OneDrive
+
+**`exit 0` prova gravação local íntegra no diretório sincronizado e hash idêntico
+entre origem e destino — não prova upload concluído.** A sincronização é do
+cliente OneDrive, assíncrona, e o script não a enxerga.
+
+No ciclo de validação do Scheduler (`2026-08-26T164034`) os dois arquivos foram
+**conferidos visualmente com status verde**, portanto **esse ciclo específico
+teve a sincronização concluída**. Isso não se estende automaticamente aos ciclos
+seguintes: a conferência do ícone continua sendo humana.
+
+### 9.7 Quando a tarefa falhar
+
+O *Último resultado da execução* **é** o diagnóstico. `logs\RUN-RESULT-<setId>.json`
+traz `exitCode` e **`failedStage`**; `logs\backup-<setId>.log` traz a linha exata;
+e o `staging\<setId>` é **preservado**. Ver §6 e a tabela de códigos em
+`scripts/backup/README.md`.
+
+Atenção a um caso: **`exit 60`** (cópia externa) significa que o **backup local
+continua válido e selado** — e que a retenção **não** rodou. Com
+`RestartCount = 2`, um retry criaria um segundo conjunto no mesmo dia; inofensivo
+com `Daily = 7`, mas vale saber por que ele aparece.
+
+---
+
+## 10. O que falta para A9 deixar de ser parcial
 
 | | Item | Estado |
 |---|---|---|
@@ -341,25 +482,27 @@ regressão (**I** e **J**).
 | 4 | Primeiro ciclo completo executado e verificado | ✅ **§8** |
 | 5 | Recuperação da cópia externa testada | ✅ **§8.3** |
 | 6 | Permanência no Free registrada como aceitação de risco | ✅ **§1.1** |
-| 7 | **Política de retenção observada em execução real** | 🟡 — rodou em **WhatIf**; o caminho destrutivo nunca foi exercitado |
-| 8 | **Task Scheduler** | ❌ |
-| 9 | **Backup gerenciado / PITR** | ❌ — o plano Free não inclui. É o núcleo do A9 |
-| 10 | **Restore integral da plataforma (`auth`, `storage`)** | ❌ |
+| 7 | **Task Scheduler configurado e validado** | ✅ **§9** — execução diária automática **ATIVA** às 10:30 |
+| 8 | **Retenção habilitada operacionalmente** | ✅ **§9.4** — `-WhatIfRetention` removido |
+| 9 | **Primeira exclusão real da retenção observada** | 🟡 **§9.5** — habilitada, mas ainda não exercitada: 2 conjuntos, política mantém 7 diários |
+| 10 | **Backup gerenciado / PITR** | ❌ — o plano Free não inclui. É o núcleo do A9 |
+| 11 | **Restore integral da plataforma (`auth`, `storage`)** | ❌ |
 
-**A9 continua 🟡 PARCIALMENTE TRATADO.** O que mudou é substancial — existe backup
-real, selado, verificado, cifrado fora da máquina e **provadamente recuperável**.
+**A9 continua 🟡 PARCIALMENTE TRATADO.** O que mudou desde 24/08 é grande: existe
+backup real, selado, verificado, cifrado fora da máquina, **provadamente
+recuperável**, e agora **produzido por uma tarefa agendada que roda sozinha todo
+dia às 10:30**.
 
-O que **não** mudou, e convém não confundir com o que mudou: a rotina foi validada
-em execução **manual** e **a execução diária automática não está ativa** — nada
-está agendado. A retenção nunca apagou nada de verdade, não há backup gerenciado
-nem PITR, e o restore integral da plataforma segue sem teste.
+O que **não** mudou: o **caminho destrutivo da retenção nunca foi observado** —
+ela está habilitada, mas ainda não teve o que apagar; **não há backup gerenciado
+nem PITR**; e o **restore integral da plataforma segue sem teste**.
 
 **Nada disto é restore integral do Supabase.** O provado continua sendo schema e
 dados da aplicação `public`.
 
 ---
 
-## 10. Testes offline executados
+## 11. Testes offline executados
 
 Todos passaram, sem tocar produção e sem executar backup real:
 
