@@ -267,7 +267,18 @@ do 5.1, não tem `ProcessStartInfo.ArgumentList`.
 
 ## 9. Task Scheduler
 
-**Ainda não configurado.** Só depois do primeiro ciclo manual bem-sucedido.
+**Continua NÃO configurado — a execução diária automática ainda NÃO está ativa.**
+Hoje a rotina só roda se alguém a disparar.
+
+**A precondição, porém, foi cumprida.** O primeiro ciclo manual real terminou com
+sucesso em **2026-08-26, exit 0** (set `2026-08-26T144106`): o conjunto local foi
+selado e verificado por fora, e a **cópia externa cifrada desse ciclo foi
+descriptografada, extraída e validada** — byte a byte igual ao set local. Ver
+`docs/A9-ROTINA-BACKUP.md` §8.
+
+**Próximo passo operacional: configurar e validar o Task Scheduler.** Enquanto isso
+não acontecer, o RPO real é o intervalo entre execuções lembradas à mão, e não as
+24 h da política.
 
 A tarefa agendada não herda **nada** da sua sessão: nem `PATH`, nem diretório
 corrente, nem perfil do PowerShell, nem `%APPDATA%` (se rodar como SYSTEM). O script

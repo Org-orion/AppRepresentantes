@@ -1,7 +1,17 @@
 # A9 — Rotina operacional de backup
 
-> **Estado: código pronto, rotina NÃO ativa.** O A9 permanece 🟡 **PARCIALMENTE
-> TRATADO**. Ver §8 para o que ainda falta.
+> **Estado: rotina implementada e validada em primeiro ciclo MANUAL real —
+> 2026-08-26, exit 0.** O set local foi verificado por fora, e a cópia externa
+> cifrada foi **descriptografada, extraída e validada**. Ver §8.
+>
+> ⚠️ **A execução diária automática NÃO está ativa.** O único ciclo real foi
+> disparado à mão; o **Task Scheduler ainda não foi configurado**. O que está
+> provado é que a rotina *funciona quando é executada*, não que ela *roda sozinha*.
+>
+> **O A9 permanece 🟡 PARCIALMENTE TRATADO.** A retenção rodou apenas em
+> `WhatIf`, o Task Scheduler não está configurado, não há backup gerenciado nem
+> PITR, e o restore integral da plataforma (`auth`, `storage`) continua sem teste.
+> Ver §9.
 >
 > Implementação em `scripts/backup/`. Operação em `scripts/backup/README.md`.
 
@@ -28,6 +38,10 @@ o banco, a recuperação depende exclusivamente da cópia externa.
 4. a criticidade operacional passar a justificar recuperação gerenciada.
 
 ### 1.2 Frequência
+
+> ⚠️ Isto é a **política aprovada**, não o estado atual. Até 26/08/2026 houve **uma**
+> execução, **manual**. Sem Task Scheduler configurado, a frequência real é a que
+> alguém lembrar de executar.
 
 | | |
 |---|---|
@@ -223,24 +237,129 @@ Baseline de 2026-08-25: bucket `avatars`, público, 2 objetos.
 
 ---
 
-## 8. O que falta para A9 deixar de ser parcial
+## 8. Primeiro ciclo real — 2026-08-26 (execução **manual**)
 
-| | Item | Estado |
-|---|---|---|
-| 1 | `.pgpass` real configurado e ACL validada | ❌ |
-| 2 | Destino externo real configurado | ❌ |
-| 3 | Passphrase do GPG configurada | ❌ |
-| 4 | Primeiro ciclo automático completo executado e verificado | ❌ |
-| 5 | Política de retenção observada em execução real | ❌ |
-| 6 | Permanência no Free registrada como aceitação de risco | ✅ **§1.1** |
-| 7 | Task Scheduler | ❌ — só depois do item 4 |
+A rotina deixou de ser código testado offline. Rodou contra o banco de produção,
+do começo ao fim, e o resultado foi verificado por fora.
 
-**Enquanto 1 a 5 e 7 estiverem abertos, a rotina é código, não operação.** Código de
-backup que nunca rodou não protege nada.
+**Disparo: manual, por um operador.** `-Reason scheduled` diz o *tipo* de backup —
+o que define a categoria na retenção GFS — e não significa que algo o agendou.
+**Nenhuma tarefa agendada existe.**
+
+**Comando:** `-Reason scheduled` com `-WhatIfRetention`, configuração real.
+**Resultado: exit 0.**
+
+| | |
+|---|---|
+| `setId` | `2026-08-26T144106` |
+| `reason` | `scheduled` |
+| `note` | *primeiro ciclo real - retencao em dry-run* |
+| duração | 15 s |
+| set local | `…\AppRepresentatives-Backups\sets\2026-08-26T144106` |
+
+### 8.1 O pipeline que passou
+
+| Estágio | Resultado |
+|---|---|
+| conectividade (Session Pooler) | OK |
+| `roles` | OK |
+| `schema` + as 12 transformações | OK |
+| `dados` | OK |
+| Storage | **2 objetos em 1 bucket**, tamanhos conferidos |
+| sanidade | `public` = **10** tabelas · `COPY public` = **10** · `COPY` total = **39** · **`auth.users` presente** |
+| manifesto | **8 artefatos** |
+| selagem | OK |
+| passphrase do GPG + ACL | OK |
+| cópia externa cifrada | OK — hash local × destino **idêntico** |
+| retenção | **WhatIf**: 1 mantido, 0 a remover |
+
+Os números batem com o backup manual validado em 25/08 — 10 tabelas, 39 blocos
+`COPY`, 2 objetos de Storage. É o que confirma que a rotina produz o mesmo
+conjunto que a execução manual conferida.
+
+### 8.2 Verificação independente do set local
+
+`Verify-PortalBackup.ps1`, offline, sem banco e sem credencial:
+
+**exit 0 · 8/8 artefatos íntegros · 0 divergentes · 0 ausentes · 0 extras ·
+`BACKUP-OK.json` válido.**
+
+### 8.3 A cópia externa foi recuperada, não só conferida
+
+Esta é a parte que faltava. Um hash conferido no momento da cópia prova que o
+arquivo saiu inteiro; não prova que ele **volta**. O artefato sincronizado no
+OneDrive foi então descriptografado e extraído numa área temporária fora do
+repositório, do `BackupRoot` e do próprio OneDrive:
+
+| | |
+|---|---|
+| SHA-256 **após a sincronização** | `3b968f42043b62aaf75c1ac67fa76810acd7ef5c7b48e096ed5d55fbc440746d` |
+| × sidecar `.sha256` | **idêntico** |
+| `gpg --decrypt` | **exit 0** — **AES256** confirmado pelo próprio gpg |
+| `tar -xf` | **exit 0** |
+| `Verify-PortalBackup` no set **extraído** | **exit 0** |
+| artefatos | **8/8 íntegros · 0 divergentes · 0 ausentes · 0 extras** |
+| `setId` / `reason` extraídos × local | idênticos |
+| **conteúdo extraído × set local** | **8 idênticos, 0 diferentes** (SHA-256 arquivo a arquivo) |
+
+O `.tar` em claro e o diretório extraído foram apagados ao final — o `.tar` em
+claro contém dados pessoais e não pode sobreviver ao ensaio.
+
+**A conclusão que isto autoriza, e só ela:** a cópia externa sincronizada é
+**comprovadamente recuperável** e **byte a byte equivalente** ao conjunto selado
+local.
+
+### 8.4 As duas falhas que antecederam o sucesso
+
+Ambas falharam **fechado**: staging preservado, nenhum conjunto promovido,
+nenhuma cópia externa, nenhuma retenção. Os dois stagings seguem preservados.
+
+| `setId` | Onde parou | Causa | Correção |
+|---|---|---|---|
+| `2026-08-26T140018` | `roles`, exit **20** | `pg_dumpall` recebeu `--dbname postgres`, mas nessa ferramenta `--dbname` é **conninfo**, não nome de banco | a chamada passou a reproduzir o comando manual validado, **sem `--dbname`** |
+| `2026-08-26T142243` | logo após o manifesto | `.Count` sobre `$null`: coleção vazia **desenrolada no `return`** de `Test-Manifest` | normalização com `@()` na invocação + rastreamento explícito de estágio |
+
+A segunda trouxe uma melhoria de diagnóstico junto: falha **inesperada** em
+manifesto/selagem agora sai com **exit 50**, o código do estágio, em vez do
+genérico `1`. Cada estágio tem o seu, e o `RUN-RESULT` registra `failedStage`.
+
+**Por que as duas escaparam da suíte offline.** A primeira dependia da ferramenta
+real — nenhum teste offline invoca `pg_dumpall`. A segunda vivia no **caminho
+feliz**: os testes de manifesto sempre usavam conjuntos adulterados, e a lista de
+problemas só vem vazia quando está tudo certo. As duas ganharam teste de
+regressão (**I** e **J**).
 
 ---
 
-## 9. Testes offline executados
+## 9. O que falta para A9 deixar de ser parcial
+
+| | Item | Estado |
+|---|---|---|
+| 1 | `.pgpass` real configurado e ACL validada | ✅ |
+| 2 | Destino externo real configurado | ✅ — OneDrive, sincronização confirmada |
+| 3 | Passphrase do GPG configurada, com ACL verificada | ✅ |
+| 4 | Primeiro ciclo completo executado e verificado | ✅ **§8** |
+| 5 | Recuperação da cópia externa testada | ✅ **§8.3** |
+| 6 | Permanência no Free registrada como aceitação de risco | ✅ **§1.1** |
+| 7 | **Política de retenção observada em execução real** | 🟡 — rodou em **WhatIf**; o caminho destrutivo nunca foi exercitado |
+| 8 | **Task Scheduler** | ❌ |
+| 9 | **Backup gerenciado / PITR** | ❌ — o plano Free não inclui. É o núcleo do A9 |
+| 10 | **Restore integral da plataforma (`auth`, `storage`)** | ❌ |
+
+**A9 continua 🟡 PARCIALMENTE TRATADO.** O que mudou é substancial — existe backup
+real, selado, verificado, cifrado fora da máquina e **provadamente recuperável**.
+
+O que **não** mudou, e convém não confundir com o que mudou: a rotina foi validada
+em execução **manual** e **a execução diária automática não está ativa** — nada
+está agendado. A retenção nunca apagou nada de verdade, não há backup gerenciado
+nem PITR, e o restore integral da plataforma segue sem teste.
+
+**Nada disto é restore integral do Supabase.** O provado continua sendo schema e
+dados da aplicação `public`.
+
+---
+
+## 10. Testes offline executados
 
 Todos passaram, sem tocar produção e sem executar backup real:
 
@@ -253,8 +372,15 @@ Todos passaram, sem tocar produção e sem executar backup real:
 | **E** | retenção GFS: diário, semanas ISO, meses, união, `prechange`, `manual`, sem selo, `staging`, `WhatIf` |
 | **F** | URL encoding do Storage: espaço, `#`, `%`, Unicode, subpastas, barras preservadas |
 | **G** | `RUN-RESULT` fora do set, imutabilidade do selo, readiness para Task Scheduler |
+| **H** | auditoria estática: `--use-copy`, exit code de nativo, argumentos e ACL do GPG, whitelist de ACL, travessia de caminho no Storage, imutabilidade pós-selo, integridade e retenção externas, independência de CWD/PATH |
+| **I** | **regressão**: argumentos montados para o `pg_dumpall` — sem `-d`/`--dbname`/`-l`/`--database`, idênticos ao comando manual validado, e `pg_dump`/`psql` mantendo `--dbname` |
+| **J** | **regressão**: manifesto de 8 artefatos íntegro, coleções de 0/1/N elementos, selagem completa, e falha inesperada em manifesto/selagem saindo com **exit 50** |
 
-### Três defeitos reais encontrados e corrigidos pelos testes
+**I e J nasceram das duas falhas do primeiro ciclo real** (§8.4). Uma suíte que
+passa inteira não prova que o pipeline funciona — prova que os casos cobertos
+funcionam. Foram exatamente os dois casos **não** cobertos que quebraram.
+
+### Defeitos reais encontrados e corrigidos pelos testes
 
 1. **`Verify` não detectava a falta do dump final de dados.** O glob
    `backup-portal-dados-*.sql` também casa `backup-portal-dados-*.raw.sql`, então a
@@ -264,3 +390,23 @@ Todos passaram, sem tocar produção e sem executar backup real:
    Corrigido com `.ToArray()`.
 3. **Variáveis do PowerShell são case-insensitive** — `$SRC` e `$src` eram a mesma
    variável e o teste sobrescrevia o próprio caminho. Erro do teste, não do código.
+4. **`Get-LocalObjectPath` não protegia contra travessia.** Um objeto de Storage
+   chamado `../../x` gravaria fora do set e o backup seria selado como válido.
+   Corrigido com validação por segmento, canonicalização e exit 34 dedicado.
+5. **Toda invocação de nativo dependia de `$LASTEXITCODE` e de redirecionamento de
+   stderr** — que no PS 5.1 vira `NativeCommandError` e derruba a execução mesmo
+   com exit 0. Substituído por um wrapper único sobre `System.Diagnostics.Process`.
+6. **O `gpg` não recebia `--pinentry-mode loopback`** — sem ele o gpg2 ignora o
+   `--passphrase-file` e trava em batch. A cifragem do primeiro ciclo real só
+   funcionou por causa desta correção.
+
+### E os dois que só o ciclo real encontrou
+
+7. **`pg_dumpall` com `--dbname`** — nessa ferramenta o parâmetro é *conninfo*.
+8. **`.Count` sobre coleção vazia desenrolada no `return`** — o caminho feliz, que
+   a suíte nunca exercitava.
+
+Ver §8.4. A lição operacional é direta: **teste offline reduz risco, não o
+elimina.** As barreiras de desenho — staging separado, selo por último, retenção
+enxergando só selados — é que garantiram que as duas falhas não produzissem backup
+inválido.

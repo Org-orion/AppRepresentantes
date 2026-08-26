@@ -1,8 +1,11 @@
 # Backup manual do banco do Portal
 
-> ⚠️ **ESTE É O PROCEDIMENTO DE CONTINGÊNCIA.** A rotina normal passou a ser automatizada — ver
-> `scripts/backup/README.md` e `docs/A9-ROTINA-BACKUP.md`. Use este documento quando a automação
-> falhar, quando ela ainda não estiver ativa, ou quando for preciso um backup fora do fluxo.
+> ⚠️ **ESTE É O PROCEDIMENTO DE CONTINGÊNCIA.** O caminho preferencial é o script de
+> `scripts/backup/` — ver `scripts/backup/README.md` e `docs/A9-ROTINA-BACKUP.md`. Ele **já executou
+> contra produção com sucesso** em 26/08/2026 (exit 0), numa execução **manual**: o **Task Scheduler
+> não está configurado** e a execução diária automática **não está ativa**. Use este documento quando
+> o script falhar, quando as ferramentas dele não estiverem disponíveis, ou quando for preciso um
+> backup fora do fluxo.
 >
 > **Executor: humano.** Motivo: achado **A9** — o projeto está no plano Free e **não tem backup
 > gerenciado** (nem diário, nem PITR).
@@ -60,7 +63,7 @@ No PowerShell, troque `$(date +%Y%m%d)` por `$(Get-Date -Format yyyyMMdd)`.
 > ⚠️ **`--use-copy` é opção do `supabase db dump`, NÃO do `pg_dump` nativo.** Os
 > comandos acima usam o Supabase CLI, onde a flag existe. O `pg_dump` 18.6 rejeita esse
 > argumento — e não precisa dele, porque `COPY` já é o formato padrão de `--data-only`.
-> A rotina automatizada em `scripts/backup/` usa `pg_dump` nativo e **não** passa
+> O script de `scripts/backup/` usa `pg_dump` nativo e **não** passa
 > `--use-copy`. Não copie a flag de um procedimento para o outro.
 
 ## Passo 3 — conferir que o backup não é uma casca
@@ -125,5 +128,6 @@ Detalhamento em `docs/A9-BACKUP-RESTORE.md`.
 | Data | Quem | Arquivos gerados | Verificação | `auth.users` no dump? | Guardado onde |
 |---|---|---|---|---|---|
 | 2026-08-25 | executor humano | `backup-portal-roles-20260825.sql` · `backup-portal-schema-20260825.sql` · `backup-portal-dados-20260825.sql` · os `.raw.sql` de schema e dados · `SHA256SUMS-20260825.txt` · `BACKUP-EVIDENCE-20260825.txt` · 2 objetos do bucket `avatars` | **8/8 artefatos validados por SHA-256**; 39 blocos `COPY`; 10 tabelas `public`; restore-test com 10/10 contagens idênticas | ✅ **sim** | `C:\Users\1kmz\AppRepresentatives-Backups\2026-08-24` — **fora do repositório** |
+| 2026-08-26 | **script de backup, disparado à mão** (`Invoke-PortalBackup.ps1`) | set `2026-08-26T144106`: 8 artefatos + `SHA256SUMS.txt` + `BACKUP-OK.json`; cópia externa `2026-08-26T144106.tar.gpg` (AES256) | **8/8 por SHA-256**; 39 blocos `COPY`; 10 tabelas `public`; **cópia externa descriptografada, extraída e validada**, idêntica ao set local | ✅ **sim** | `sets` local + OneDrive cifrado — **fora do repositório** |
 
 > **Nenhuma credencial foi gravada** nos artefatos, no manifesto ou no arquivo de evidência.

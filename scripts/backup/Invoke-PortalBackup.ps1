@@ -113,6 +113,24 @@ function Stop-Stage {
     throw [BackupStageError]::new($Message, $Code)
 }
 
+<#
+    Estágio corrente da execução.
+
+    Serve para dar CÓDIGO DE SAÍDA a exceção INESPERADA — a que não passou por
+    Stop-Stage. Sem isto, um erro de PowerShell no meio da selagem sai como exit
+    genérico 1, que não diz nada a quem for diagnosticar de madrugada: 1 pode ser
+    qualquer coisa, enquanto 50 diz "manifesto/selagem".
+
+    Foi o que aconteceu no segundo ciclo real: o `.Count` sobre `$null` virou
+    exit 1, quando o conjunto todo estava íntegro e o problema era de selagem.
+#>
+$script:CurrentStage = @{ Name = 'inicialização'; Code = 1 }
+
+function Set-CurrentStage {
+    param([string] $Name, [int] $Code)
+    $script:CurrentStage = @{ Name = $Name; Code = $Code }
+}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # EXECUÇÃO DE PROCESSO NATIVO
 #
@@ -494,6 +512,43 @@ function Restore-LibpqEnvironment {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 <#
+    Argumentos de conexão comuns a pg_dumpall, pg_dump e psql.
+    A senha NÃO entra aqui: `--no-password` proíbe o prompt e quem fornece a
+    senha é o libpq, lendo o .pgpass apontado por PGPASSFILE.
+#>
+function Get-ConnectionArguments {
+    param([hashtable] $Db)
+    return @('--host', $Db.Host, '--port', $Db.Port, '--username', $Db.User, '--no-password')
+}
+
+<#
+    Argumentos do estágio `roles`.
+
+    ⚠️ NÃO acrescente `-d` / `--dbname` aqui, e não "conserte" isto de volta.
+
+    `-d` significa coisas DIFERENTES nas duas ferramentas:
+
+      • pg_dump    -d, --dbname=NOMEBD   → nome do banco;
+      • pg_dumpall -d, --dbname=TEXTO    → CADEIA DE CONEXÃO (conninfo).
+
+    Passar `--dbname postgres` ao pg_dumpall faz o 18.6 tentar interpretar
+    `postgres` como conninfo e falhar com:
+
+        faltando "=" após "postgres" na cadeia de caracteres
+        de informações da conexão
+
+    Foi exatamente a falha do primeiro ciclo real (2026-08-26, exit 20). O
+    equivalente correto para "banco padrão alternativo" seria `-l/--database`,
+    que também não é necessário: o backup manual validado em 2026-08-25 rodou
+    sem nenhum dos dois. Esta função reproduz aquela chamada.
+#>
+function Get-RolesDumpArguments {
+    param([hashtable] $Db, [string] $OutFile)
+    return (Get-ConnectionArguments -Db $Db) +
+           @('--roles-only', '--no-role-passwords', '--file', $OutFile)
+}
+
+<#
     Roda a ferramenta de um estágio e ABORTA no primeiro exit != 0, mapeando
     para o código do estágio. Nenhum arquivo parcial segue adiante: quem chama
     só continua se esta função retornar.
@@ -831,6 +886,7 @@ function Get-FileSha256 {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+# Arquivos que entram no manifesto. Ver a nota em Test-Manifest.
 function Get-ManifestCandidates {
     param([string] $SetDir)
     return @(
@@ -856,13 +912,37 @@ function New-Manifest {
     return $entries.ToArray()
 }
 
+<#
+    Revalida o manifesto. Devolve a lista de problemas — VAZIA quando está tudo certo.
+
+    ⚠️ QUEM CHAMA PRECISA ENVOLVER COM `@()`. Não é estilo.
+
+    O PowerShell DESENROLA coleções no `return`. Numa atribuição simples:
+
+      • lista VAZIA  → o chamador recebe `$null`, e sob
+        `Set-StrictMode -Version Latest` o `.Count` seguinte LANÇA
+        "A propriedade 'Count' não foi encontrada neste objeto";
+      • lista com UM → o chamador recebe um escalar, não um array.
+
+    Foi exatamente a falha do segundo ciclo real (2026-08-26T142243): o conjunto
+    estava íntegro, a lista de problemas veio vazia, virou `$null`, e a selagem
+    morreu logo depois de "manifesto: 8 artefatos". O caminho feliz é justamente
+    o que nunca era exercitado offline — por isso passou por toda a suíte.
+
+    A cura é `@(Test-Manifest -SetDir $x)`, com o `@()` em volta da INVOCAÇÃO:
+    dá 0, 1 ou N corretamente.
+
+    ⚠️ NÃO "reforce" isto com `return ,$array`. As duas técnicas juntas ANINHAM:
+    `@(função-que-devolve-,$array)` dá Count 1 com o array inteiro dentro. E não
+    troque por `@($variavel)` depois da atribuição: `@($null)` dá Count 1, não 0.
+#>
 function Test-Manifest {
     param([string] $SetDir)
 
     $manifest = Join-Path $SetDir $script:ManifestName
     $problems = New-Object System.Collections.Generic.List[string]
     if (-not (Test-Path -LiteralPath $manifest)) {
-        $problems.Add('manifesto ausente'); return $problems
+        $problems.Add('manifesto ausente'); return $problems.ToArray()
     }
 
     $declared = @{}
@@ -1044,6 +1124,7 @@ function Invoke-PortalBackupMain {
 
     try {
         # ── [0] pré-checagem ──────────────────────────────────────────────────
+        Set-CurrentStage 'pré-voo' $script:EXIT.ToolMissing
         $tools = [ordered]@{
             PgDump    = Resolve-Tool $cfg.Tools.PgDump    'pg_dump.exe'
             PgDumpall = Resolve-Tool $cfg.Tools.PgDumpall 'pg_dumpall.exe'
@@ -1070,6 +1151,7 @@ function Invoke-PortalBackupMain {
         Write-Log 'conectividade: ok' 'OK'
 
         # ── [1] staging ───────────────────────────────────────────────────────
+        Set-CurrentStage 'staging' $script:EXIT.DestinationBad
         $stagingDir = Join-Path $stagRoot $setId
         New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 
@@ -1079,13 +1161,17 @@ function Invoke-PortalBackupMain {
         $dataRawPath   = Join-Path $stagingDir ("backup-portal-dados-{0}.raw.sql" -f $setId)
         $dataPath      = Join-Path $stagingDir ("backup-portal-dados-{0}.sql" -f $setId)
 
-        $conn = @('--host', $cfg.Db.Host, '--port', $cfg.Db.Port, '--username', $cfg.Db.User, '--no-password')
+        $conn = Get-ConnectionArguments -Db $cfg.Db
 
         # ── [2] roles ─────────────────────────────────────────────────────────
-        Invoke-Tool -Exe $tools.PgDumpall -Stage 'roles' -FailCode $script:EXIT.RolesFailed -Arguments (
-            $conn + @('--dbname', $cfg.Db.Database, '--roles-only', '--no-role-passwords', '--file', $rolesPath))
+        Set-CurrentStage 'roles' $script:EXIT.RolesFailed
+        # Sem --dbname: no pg_dumpall ele é conninfo, não nome de banco.
+        # Ver Get-RolesDumpArguments.
+        Invoke-Tool -Exe $tools.PgDumpall -Stage 'roles' -FailCode $script:EXIT.RolesFailed `
+                    -Arguments (Get-RolesDumpArguments -Db $cfg.Db -OutFile $rolesPath)
 
         # ── [3] schema ────────────────────────────────────────────────────────
+        Set-CurrentStage 'schema' $script:EXIT.SchemaFailed
         # --quote-all-identifiers (PLURAL). O pg_dump nativo 18.6 rejeita o
         # singular que o Supabase CLI exibe no dry-run. Não "corrigir" de volta.
         $schemaExclude = 'information_schema|pg_*|_analytics|_realtime|_supavisor|auth|etl|extensions|pgbouncer|realtime|storage|supabase_functions|supabase_migrations|cron|dbdev|graphql|graphql_public|net|pgmq|pgsodium|pgsodium_masks|pgtle|repack|tiger|tiger_data|timescaledb_*|_timescaledb_*|topology|vault'
@@ -1096,6 +1182,7 @@ function Invoke-PortalBackupMain {
         Write-Log 'schema: 12 transformações aplicadas' 'OK'
 
         # ── [4] dados ─────────────────────────────────────────────────────────
+        Set-CurrentStage 'dados' $script:EXIT.DataFailed
         $dataExclude = 'information_schema|pg_*|graphql|graphql_public|pgsodium|pgsodium_masks|pgtle|repack|tiger|tiger_data|timescaledb_*|_timescaledb_*|topology|vault|etl|extensions|pgbouncer|realtime|supabase_migrations|_analytics|_realtime|_supavisor'
         Invoke-Tool -Exe $tools.PgDump -Stage 'dados' -FailCode $script:EXIT.DataFailed -Arguments (
             $conn + @('--dbname', $cfg.Db.Database, '--data-only', '--quote-all-identifiers',
@@ -1108,10 +1195,12 @@ function Invoke-PortalBackupMain {
         Write-Log 'dados: SET replica / RESET ALL aplicados' 'OK'
 
         # ── [5] storage ───────────────────────────────────────────────────────
+        Set-CurrentStage 'storage' $script:EXIT.StorageDownload
         $storageDir = Join-Path $stagingDir 'storage'
         $storageReport = Invoke-StorageBackup -Tools $tools -Cfg $cfg -TargetDir $storageDir
 
         # ── [6] sanidade ──────────────────────────────────────────────────────
+        Set-CurrentStage 'sanidade' $script:EXIT.SanitySchema
         $req = @($cfg.RequiredPublicTables)
         $ss = Get-SchemaSanity -SchemaSqlPath $schemaPath -RequiredTables $req
         if ($ss.InternalLeaks.Count -gt 0) {
@@ -1138,6 +1227,7 @@ function Invoke-PortalBackupMain {
         Write-Log ("sanidade ok · schema public={0} · COPY public={1} · COPY total={2} · auth.users=sim" -f $ss.TotalPublic, $ds.CopyPublic, $ds.CopyTotal) 'OK'
 
         # ── [7] evidência + manifesto ─────────────────────────────────────────
+        Set-CurrentStage 'manifesto' $script:EXIT.SealFailed
         # A evidência entra no manifesto e, portanto, é IMUTÁVEL depois da selagem.
         # Nada de cópia externa/retenção/exit aqui — isso vive no RUN-RESULT.
         $evidencePath = Join-Path $stagingDir ("{0}-{1}.txt" -f $script:EvidencePrefix, $setId)
@@ -1175,11 +1265,17 @@ function Invoke-PortalBackupMain {
         ) -join "`r`n"
         Write-TextFileUtf8NoBom $evidencePath $evidence
 
-        $artifacts = New-Manifest -SetDir $stagingDir
+        # @() em volta da INVOCAÇÃO de toda função que devolve coleção.
+        # Ver a nota em Test-Manifest — foi o que derrubou o ciclo de 26/08.
+        $artifacts = @(New-Manifest -SetDir $stagingDir)
+        if ($artifacts.Count -lt 1) {
+            Stop-Stage 'manifesto vazio: nenhum artefato para selar' $script:EXIT.SealFailed
+        }
         Write-Log ("manifesto: {0} artefatos" -f $artifacts.Count) 'OK'
 
         # ── [8] selagem ───────────────────────────────────────────────────────
-        $problems = Test-Manifest -SetDir $stagingDir
+        Set-CurrentStage 'selagem' $script:EXIT.SealFailed
+        $problems = @(Test-Manifest -SetDir $stagingDir)
         if ($problems.Count -gt 0) {
             Stop-Stage ("revalidação do manifesto falhou: {0}" -f ($problems -join '; ')) $script:EXIT.SealFailed
         }
@@ -1214,18 +1310,34 @@ function Invoke-PortalBackupMain {
         Write-Log ("set selado: {0}" -f $setDir) 'OK'
 
         # ── [9] cópia externa ─────────────────────────────────────────────────
+        Set-CurrentStage 'cópia externa' $script:EXIT.ExternalCopy
         Invoke-ExternalCopy -Tools $tools -Cfg $cfg -SetDir $setDir -SetId $setId -WhatIfRetention:$WhatIfRetention
         $externalCopy = 'success'
         Write-Log 'cópia externa: validada por hash na origem e no destino' 'OK'
 
         # ── [10] retenção ─────────────────────────────────────────────────────
+        Set-CurrentStage 'retenção' $script:EXIT.Retention
         $ret = Invoke-Retention -Cfg $cfg -SetsDir $setsDir -StagingRoot $stagRoot -WhatIf:$WhatIfRetention
         $retentionState = if ($WhatIfRetention) { 'whatif' } else { 'applied' }
         $retentionDeleted = $ret.Deleted
     }
     catch {
-        $exitCode = if ($_.Exception -is [BackupStageError]) { $_.Exception.Code } else { 1 }
-        Write-Log ("FALHA: {0}" -f $_.Exception.Message) 'ERRO'
+        if ($_.Exception -is [BackupStageError]) {
+            # Falha prevista: o estágio já escolheu o código.
+            $exitCode = $_.Exception.Code
+            Write-Log ("FALHA: {0}" -f $_.Exception.Message) 'ERRO'
+        }
+        else {
+            # Falha INESPERADA — erro de PowerShell, não de negócio. Sai com o
+            # código do estágio corrente, nunca com o genérico 1: quem diagnostica
+            # precisa saber ONDE quebrou, e `1` não diz nada.
+            $exitCode = $script:CurrentStage.Code
+            Write-Log ("FALHA INESPERADA no estágio '{0}': {1}" -f $script:CurrentStage.Name, $_.Exception.Message) 'ERRO'
+            if ($_.InvocationInfo) {
+                Write-Log ("  origem: {0}" -f ($_.InvocationInfo.PositionMessage -replace "`r?`n", ' ')) 'ERRO'
+            }
+            Write-Log ("  mapeada para o código do estágio: {0}" -f $exitCode) 'ERRO'
+        }
         if ($exitCode -eq $script:EXIT.ExternalCopy) { $externalCopy = 'failed' }
         Write-Log 'retenção NÃO executada por causa da falha' 'WARN'
     }
@@ -1240,6 +1352,7 @@ function Invoke-PortalBackupMain {
             finishedAt       = (Get-Date).ToString('o')
             durationSeconds  = [int]((Get-Date) - $started).TotalSeconds
             exitCode         = $exitCode
+            failedStage      = if ($exitCode -eq $script:EXIT.OK) { $null } else { $script:CurrentStage.Name }
             sealedSetPath    = $setDir
             externalCopy     = $externalCopy
             retention        = $retentionState
@@ -1279,11 +1392,11 @@ function Invoke-StorageBackup {
     $configured = @($Cfg.StorageBuckets)
 
     # 1) buckets que TÊM objetos, direto do banco
-    $rows = Invoke-PsqlScalarQuery -Psql $Tools.Psql -Db $Cfg.Db -FailCode $script:EXIT.StorageDownload -Query @'
+    $rows = @(Invoke-PsqlScalarQuery -Psql $Tools.Psql -Db $Cfg.Db -FailCode $script:EXIT.StorageDownload -Query @'
 select b.id, b.public::text, count(o.id)::text
 from storage.buckets b left join storage.objects o on o.bucket_id = b.id
 group by b.id, b.public order by b.id;
-'@
+'@)
     $buckets = @()
     foreach ($r in $rows) {
         $p = $r -split "`t"
@@ -1309,10 +1422,10 @@ group by b.id, b.public order by b.id;
     # 4) listagem — fonte da verdade desta execução
     $expected = 0; $downloaded = 0; $sizesMatch = $true
     foreach ($id in $configured) {
-        $objRows = Invoke-PsqlScalarQuery -Psql $Tools.Psql -Db $Cfg.Db -FailCode $script:EXIT.StorageDownload -Query (@'
+        $objRows = @(Invoke-PsqlScalarQuery -Psql $Tools.Psql -Db $Cfg.Db -FailCode $script:EXIT.StorageDownload -Query (@'
 select o.name, coalesce((o.metadata->>'size')::bigint, 0)::text
 from storage.objects o where o.bucket_id = '{0}' order by o.name;
-'@ -f $id.Replace("'", "''"))
+'@ -f $id.Replace("'", "''")))
 
         $bucketDir = Join-Path $TargetDir $id
         New-Item -ItemType Directory -Path $bucketDir -Force | Out-Null

@@ -1,24 +1,30 @@
 # A9 — Backup e recuperação do banco do Portal
 
-> **Estado em 2026-08-25.** Quatro coisas distintas, e vale não confundi-las:
+> **Estado em 2026-08-26.** Oito coisas distintas, e vale não confundi-las:
 >
 > | | Estado |
 > |---|---|
-> | Backup manual verificado | ✅ **realizado** |
+> | Backup manual verificado (25/08) | ✅ **realizado** |
 > | Restore da aplicação (`public`) | ✅ **testado com sucesso** |
+> | **Rotina — primeiro ciclo real, execução MANUAL** | ✅ **concluído em 26/08, exit 0** |
+> | **Execução diária automática (Task Scheduler)** | ❌ **não configurada** |
+> | **Cópia externa cifrada — recuperação testada** | ✅ **descriptografada, extraída e validada** |
+> | Retenção em execução real | 🟡 **só em `WhatIf`** |
 > | Restore integral da plataforma (`auth`, `storage`) | ❌ **não testado** |
-> | Backup automático / gerenciado | ❌ **ainda ausente** |
+> | Backup gerenciado / PITR | ❌ **ausente** |
 >
-> **O risco A9 NÃO foi eliminado.** O projeto segue no Supabase Free Plan, sem backups automáticos. O
-> que mudou é que agora existe uma cópia verificada e uma prova de que ela restaura a aplicação — antes
-> não havia nem uma coisa nem outra.
+> **O risco A9 NÃO foi eliminado.** O projeto segue no Supabase Free Plan, sem backup
+> gerenciado e sem PITR. O que mudou é grande: além da cópia manual verificada de 25/08,
+> agora existe uma **rotina que rodou de verdade**, produziu um conjunto selado, cifrou uma
+> segunda cópia fora da máquina e teve essa cópia **recuperada e conferida byte a byte**.
 >
-> 📌 **Atualização.** A rotina automatizável foi implementada em `scripts/backup/` e está coberta por
-> testes offline. Decisões operacionais — frequência, retenção 7/4/3, RPO/RTO, redundância e a
-> permanência no Free como **aceitação explícita de risco** — em `docs/A9-ROTINA-BACKUP.md`.
-> **A rotina ainda NÃO está ativa:** falta `.pgpass`, destino externo, passphrase do GPG, primeiro ciclo
-> real e agendamento. Código de backup que nunca rodou não protege nada.
-
+> ⚠️ **Isso não significa backup automático.** O ciclo foi **disparado à mão**; o Task
+> Scheduler não está configurado e **a execução diária automática não está ativa**.
+>
+> 📌 **Primeiro ciclo real — 2026-08-26, `setId 2026-08-26T144106`, exit 0.** Detalhamento,
+> decisões operacionais e o que ainda falta em `docs/A9-ROTINA-BACKUP.md` §8 e §9.
+> **O que continua aberto:** a retenção rodou em `WhatIf` e nunca apagou nada de verdade, o
+> Task Scheduler não está configurado, e não há backup gerenciado nem PITR.
 ---
 
 ## 1. O que motivou
@@ -148,14 +154,17 @@ cópia dos objetos do Storage. Um sem o outro é backup incompleto.
 |---|---|---|
 | ❌ | **Backup automático / gerenciado** | plano Free não inclui. **Este é o núcleo do A9, e continua aberto.** Decisão registrada: permanecer no Free como aceitação explícita de risco, com quatro gatilhos de reavaliação — ver `docs/A9-ROTINA-BACKUP.md` §1.1 |
 | ❌ | **PITR** | idem |
-| 🟡 | Retenção definida | **política aprovada** (7 diários / 4 semanais / 3 mensais) e implementada; ainda não observada em execução real |
-| 🟡 | Frequência definida | **política aprovada** (diária + `prechange`); a rotina ainda não está agendada |
+| 🟡 | Retenção definida | **política aprovada** (7/4/3) e implementada; no primeiro ciclo real rodou apenas em **`WhatIf`** (1 mantido, 0 a remover). O caminho **destrutivo** nunca foi exercitado |
+| 🟡 | Frequência definida | **política aprovada** (diária + `prechange`); a rotina rodou **uma vez, manualmente**, e ainda não está agendada |
+| ✅ | **Segunda cópia, cifrada e fora da máquina** | AES256 no OneDrive, sincronização confirmada, **recuperação testada** — ver `docs/A9-ROTINA-BACKUP.md` §8.3 |
 | ❌ | Restore integral da plataforma | ver §5 |
 | ❌ | **Senha do user mapping do FDW** | não está em nenhum artefato de backup, por decisão de segurança. Rotacioná-la sem atualizar o mapping derruba metade do sistema — ver `docs/INCIDENTE-2026-08-19-FDW.md` |
 | ❌ | Configurações de painel | `Max rows = 1000`, agregações desabilitadas, CAPTCHA do Auth, política de senha |
 | ❌ | Secrets das Edge Functions e da Vercel | por nome apenas: `SUPABASE_SERVICE_ROLE_KEY`, `TURNSTILE_SECRET_KEY`, `VITE_*` |
 
-**O RPO real ainda é o intervalo entre execuções manuais**, e não há intervalo definido.
+**O RPO real ainda é o intervalo entre execuções manuais.** A política define 24 h, mas
+enquanto a rotina não estiver agendada quem determina o intervalo é quem lembra de rodá-la.
+Até 26/08 houve **uma** execução bem-sucedida.
 
 ## 8. Decisões que continuam com o dono
 
@@ -183,17 +192,22 @@ Nenhuma delas foi tomada nesta rodada:
 
 ---
 
-## Critério de conclusão da A9 — proposto
-
-A9 não tinha critério de conclusão. Proponho quatro, dos quais **dois** estão cumpridos:
+## Critério de conclusão da A9
 
 | | Critério | Estado |
 |---|---|---|
 | 1 | Existe cópia verificada por hash, fora do repositório | ✅ **cumprido** — 8/8 artefatos |
 | 2 | A cópia foi **restaurada** e conferida contra a origem | ✅ **cumprido** para `public` — 10/10 contagens |
-| 3 | Existe rotina com frequência e retenção definidas | ❌ **aberto** |
-| 4 | Existe backup gerenciado, ou decisão explícita de não ter | ❌ **aberto** |
+| 3 | Existe rotina com frequência e retenção definidas, **que executa sozinha** | 🟡 **parcial** — validada em **uma execução manual**, com retenção em `WhatIf`. **Sem agendamento: não executa sozinha** |
+| 4 | Existe backup gerenciado, ou decisão explícita de não ter | 🟡 **parcial** — não há backup gerenciado; a permanência no Free está registrada como **aceitação explícita de risco**, com quatro gatilhos de reavaliação |
+| 5 | A segunda cópia é **recuperável**, não apenas íntegra | ✅ **cumprido** — decrypt + extract + verify sobre o artefato sincronizado |
 
-**Enquanto 3 e 4 estiverem abertos, A9 permanece como risco.** O que caiu foi a parte mais aguda:
-até 24/08 não havia nem cópia nem prova de recuperação. Hoje há as duas — e uma dúvida de seis dias
-sobre o `auth` foi respondida.
+**A9 permanece 🟡 PARCIALMENTE TRATADO.** Até 24/08 não havia nem cópia nem prova de
+recuperação; em 25/08 passou a haver as duas, manualmente; em 26/08 passou a haver uma
+**rotina que, quando executada, sela, cifra, e cuja cópia externa comprovadamente volta**.
+
+O que falta agora é de outra natureza: **agendar** — hoje a rotina só roda se alguém a
+disparar, e **a execução diária automática não está ativa** —, **exercitar a retenção de
+verdade** — ela nunca apagou nada — e a decisão de negócio sobre backup gerenciado e PITR.
+O restore integral da plataforma (`auth`, `storage`) segue sem teste, e nada nesta rodada
+mudou isso.

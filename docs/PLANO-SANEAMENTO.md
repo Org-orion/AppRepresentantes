@@ -607,7 +607,7 @@ mudar a regra vai ver o teste falhar e precisar decidir conscientemente.
 `includes` por igualdade ou por regex ancorada pode deixar de reconhecer documento legítimo — o que é
 pior. Levantamento simples: `select distinct tipo from erp.concrem_relatorio_entrega_anexos`.
 
-### A9 — O banco do Portal não tem backup gerenciado — 🟡 PARCIALMENTE TRATADO em 2026-08-25
+### A9 — O banco do Portal não tem backup gerenciado — 🟡 PARCIALMENTE TRATADO (atualizado em 2026-08-26)
 
 **Evidência (2026-08-19):** painel do Portal → Database → Backups:
 *"Free Plan does not include project backups. Upgrade to the Pro Plan for up to 7 days of scheduled
@@ -694,7 +694,7 @@ Functions e da Vercel.
 **Enquanto 3 e 4 estiverem abertos, A9 permanece como risco.** Detalhamento e decisões pendentes em
 `docs/A9-BACKUP-RESTORE.md`.
 
-#### Rotina automatizável implementada — 2026-08-25 (ainda NÃO ativa)
+#### Rotina automatizável implementada — 2026-08-25
 
 O critério 3 deixou de ser "não existe" e passou a ser "existe código, falta operar". As decisões
 operacionais foram aprovadas e a automação está escrita e testada offline — mas **rotina que nunca rodou
@@ -728,6 +728,68 @@ conferido.
 ciclo completo executado e verificado · retenção observada em execução real · Task Scheduler.
 
 Decisões, arquitetura, parâmetros pinados e resultados dos testes offline em `docs/A9-ROTINA-BACKUP.md`.
+
+#### Primeiro ciclo real executado — 2026-08-26, **manualmente** (exit 0)
+
+A rotina deixou de ser código testado offline. Rodou contra produção, do começo ao fim — **disparada à
+mão**. `-Reason scheduled` é o *tipo* de backup, que define a categoria na retenção GFS; **nenhuma tarefa
+agendada existe**, e a execução diária automática **não está ativa**.
+
+| | |
+|---|---|
+| `setId` | `2026-08-26T144106` · `reason` `scheduled` · **exit 0** · 15 s |
+| Pipeline | conectividade · `roles` · `schema` + 12 transformações · `dados` · Storage (2 objetos / 1 bucket) · sanidade · manifesto · selagem · cópia externa cifrada |
+| Sanidade | `public` = **10** tabelas · `COPY public` = **10** · `COPY` total = **39** · **`auth.users` presente** |
+| Manifesto | **8 artefatos** |
+| Cópia externa | AES256, hash local × destino **idêntico** |
+| Retenção | **`WhatIf`** — 1 mantido, 0 a remover |
+
+Os números reproduzem o backup manual de 25/08 — 10 tabelas, 39 blocos `COPY`, 2 objetos.
+
+**Verificação independente do set local** (`Verify-PortalBackup.ps1`, offline): **exit 0 · 8/8 artefatos
+íntegros · 0 divergentes · 0 ausentes · 0 extras · `BACKUP-OK.json` válido**.
+
+**A cópia externa foi recuperada, não só conferida.** Hash conferido no momento da cópia prova que o
+arquivo saiu inteiro; não prova que ele volta. O artefato sincronizado no OneDrive foi descriptografado e
+extraído numa área temporária fora do repositório, do `BackupRoot` e do OneDrive:
+
+| | |
+|---|---|
+| SHA-256 **após a sincronização** | `3b968f42043b62aaf75c1ac67fa76810acd7ef5c7b48e096ed5d55fbc440746d` — idêntico ao sidecar |
+| `gpg --decrypt` | **exit 0**, **AES256** confirmado pelo gpg |
+| `tar -xf` | **exit 0** |
+| `Verify-PortalBackup` no set **extraído** | **exit 0** — 8/8 íntegros, 0 divergentes/ausentes/extras |
+| **extraído × set local** | **8 idênticos, 0 diferentes** (SHA-256 arquivo a arquivo) |
+
+O `.tar` em claro e o diretório extraído foram apagados ao final.
+
+**Duas falhas antecederam o sucesso — ambas fecharam em segurança**, com staging preservado, nenhum set
+promovido, nenhuma cópia externa e nenhuma retenção. Os dois stagings seguem preservados.
+
+| `setId` | Onde parou | Causa | Correção |
+|---|---|---|---|
+| `2026-08-26T140018` | `roles`, exit **20** | `pg_dumpall` recebeu `--dbname postgres`, mas nessa ferramenta `--dbname` é **conninfo** | reproduzir o comando manual validado, **sem `--dbname`** |
+| `2026-08-26T142243` | logo após o manifesto | `.Count` sobre `$null` — coleção vazia **desenrolada no `return`** de `Test-Manifest` | normalização com `@()` na invocação + rastreamento explícito de estágio |
+
+A segunda trouxe uma melhoria junto: falha **inesperada** em manifesto/selagem agora sai com **exit 50**,
+o código do estágio, em vez do genérico `1`; o `RUN-RESULT` registra `failedStage`. As duas ganharam teste
+de regressão (**I** e **J**). Escaparam da suíte porque uma dependia da ferramenta real e a outra vivia no
+**caminho feliz** — os testes de manifesto sempre usavam conjuntos adulterados.
+
+**Estado após esta rodada:**
+
+| | |
+|---|---|
+| ✅ | rotina implementada · primeiro ciclo real **manual** concluído · backup local selado e verificado |
+| ✅ | segunda cópia cifrada · sincronização confirmada · **recuperação da cópia externa testada** |
+| ✅ | permanência no Free documentada como aceitação de risco |
+| 🟡 | **retenção apenas em `WhatIf`** — o caminho destrutivo nunca foi exercitado |
+| ❌ | **Task Scheduler não configurado — a execução diária automática não está ativa** |
+| ❌ | **backup gerenciado / PITR** — o plano Free não inclui; é o núcleo do A9 |
+| ❌ | **restore integral da plataforma (`auth`, `storage`)** |
+
+**A9 continua 🟡 PARCIALMENTE TRATADO.** Nada aqui equivale a restore integral do Supabase: o provado
+segue sendo schema e dados da aplicação `public`.
 
 ### A10 — As views do ERP perderam o `security_barrier`
 
