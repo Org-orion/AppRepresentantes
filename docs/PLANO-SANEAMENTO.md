@@ -694,6 +694,41 @@ Functions e da Vercel.
 **Enquanto 3 e 4 estiverem abertos, A9 permanece como risco.** Detalhamento e decisões pendentes em
 `docs/A9-BACKUP-RESTORE.md`.
 
+#### Rotina automatizável implementada — 2026-08-25 (ainda NÃO ativa)
+
+O critério 3 deixou de ser "não existe" e passou a ser "existe código, falta operar". As decisões
+operacionais foram aprovadas e a automação está escrita e testada offline — mas **rotina que nunca rodou
+não protege nada**, e o A9 continua 🟡 parcialmente tratado.
+
+**Decisões aprovadas:**
+
+| | |
+|---|---|
+| Plano | **permanecer no Free** — registrado como **aceitação explícita de risco**, com quatro gatilhos de reavaliação. **Não é equivalente a backup gerenciado** |
+| Frequência | diária (`scheduled`) + obrigatória antes de mudança em schema/migrations, `auth`, `storage` ou configuração estrutural (`prechange`) |
+| Retenção | **7 diários · 4 semanais · 3 mensais**, por união GFS sobre diretórios únicos |
+| Redundância | segunda cópia **fora da máquina**, cifrada (`tar` + `gpg` AES-256), com hash conferido na origem e no destino |
+| RPO / RTO | **24 h** / **4 h úteis** |
+| Ensaio de restore | **trimestral**, e após mudança material no pipeline |
+
+**Implementação** em `scripts/backup/`: `Invoke-PortalBackup.ps1`, `Verify-PortalBackup.ps1`,
+`backup.config.sample.psd1` e `README.md`. PowerShell nativo, **sem Docker** — `supabase db dump` exige
+Docker neste ambiente e não é usado na execução real; os parâmetros do `pg_dump` foram pinados a partir
+do que o `--dry-run` mostrou e do que a execução de 25/08 validou.
+
+**Três barreiras contra backup incompleto:** staging separado · selo `BACKUP-OK.json` gravado por último,
+depois de revalidar todos os hashes · **a retenção só enxerga sets selados** — sem isso, sete falhas
+seguidas apagariam todos os backups bons.
+
+**O set selado é imutável.** Resultado da cópia externa, da retenção e o código de saída vivem em
+`logs/RUN-RESULT-<setId>.json`, **fora** do set — escrever dentro dele invalidaria o manifesto recém
+conferido.
+
+**Falta para ativar:** `.pgpass` com ACL validada · destino externo real · passphrase do GPG · primeiro
+ciclo completo executado e verificado · retenção observada em execução real · Task Scheduler.
+
+Decisões, arquitetura, parâmetros pinados e resultados dos testes offline em `docs/A9-ROTINA-BACKUP.md`.
+
 ### A10 — As views do ERP perderam o `security_barrier`
 
 **Evidência (PASSO 1 do C0, consulta 1.5):** `pg_class.reloptions` de `public.concrem_pedidos_venda`

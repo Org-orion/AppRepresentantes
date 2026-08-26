@@ -1,7 +1,11 @@
 # Backup manual do banco do Portal
 
+> ⚠️ **ESTE É O PROCEDIMENTO DE CONTINGÊNCIA.** A rotina normal passou a ser automatizada — ver
+> `scripts/backup/README.md` e `docs/A9-ROTINA-BACKUP.md`. Use este documento quando a automação
+> falhar, quando ela ainda não estiver ativa, ou quando for preciso um backup fora do fluxo.
+>
 > **Executor: humano.** Motivo: achado **A9** — o projeto está no plano Free e **não tem backup
-> gerenciado** (nem diário, nem PITR). Enquanto isso não mudar, backup é rotina manual.
+> gerenciado** (nem diário, nem PITR).
 >
 > ✅ **Executado pela primeira vez em 2026-08-25**, com verificação por hash e ensaio de restauração da
 > aplicação. Ver o Registro no fim deste arquivo e `docs/A9-BACKUP-RESTORE.md`.
@@ -52,6 +56,12 @@ supabase db dump --db-url "$DB_URL" --data-only --use-copy -f "backup-portal-dad
 ```
 
 No PowerShell, troque `$(date +%Y%m%d)` por `$(Get-Date -Format yyyyMMdd)`.
+
+> ⚠️ **`--use-copy` é opção do `supabase db dump`, NÃO do `pg_dump` nativo.** Os
+> comandos acima usam o Supabase CLI, onde a flag existe. O `pg_dump` 18.6 rejeita esse
+> argumento — e não precisa dele, porque `COPY` já é o formato padrão de `--data-only`.
+> A rotina automatizada em `scripts/backup/` usa `pg_dump` nativo e **não** passa
+> `--use-copy`. Não copie a flag de um procedimento para o outro.
 
 ## Passo 3 — conferir que o backup não é uma casca
 

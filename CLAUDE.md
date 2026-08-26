@@ -341,8 +341,12 @@ Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
    PITR, num sistema de uso diário. Não é retenção curta: o painel informa *"Free Plan does not include
    project backups"*. **Parcialmente tratado em 25/08/2026:** existe backup manual verificado por
    SHA-256, fora do repositório, com restore da aplicação (`public`) testado — 10/10 contagens idênticas
-   à produção. Continuam ausentes a **automação** e a **retenção definida**, e o restore integral da
-   plataforma (`auth`, `storage`) **não** foi testado. Ver `docs/A9-BACKUP-RESTORE.md`. Achado A9.
+   à produção. A **rotina automatizável** está implementada em `scripts/backup/` (PowerShell, sem
+   Docker), com retenção GFS 7/4/3, cópia externa cifrada e testes offline — **mas ainda não está
+   ativa**: faltam `.pgpass`, destino externo, passphrase do GPG, primeiro ciclo real e agendamento.
+   Permanência no Free registrada como **aceitação explícita de risco**, com quatro gatilhos de
+   reavaliação. O restore integral da plataforma (`auth`, `storage`) **não** foi testado.
+   Ver `docs/A9-ROTINA-BACKUP.md` e `docs/A9-BACKUP-RESTORE.md`. Achado A9.
 8. **`anon` ainda com `select`** em tabelas do banco do ERP.
 9. **Falha transitória desloga sessão válida** — `AuthContext` trata erro ao carregar o perfil como
    ausência de usuário e joga na tela de login.

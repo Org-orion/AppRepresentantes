@@ -43,5 +43,11 @@ backup-*.sql
 *.dump
 dump-*.sql
 
+# Configuração local da rotina de backup — caminhos da máquina, e aponta para os
+# arquivos de segredo (pgpass, passphrase do GPG). O modelo versionado é o
+# backup.config.sample.psd1.
+scripts/backup/backup.config.psd1
+scripts/backup/*.local.*
+
 # Supabase CLI local state
 supabase/.temp/

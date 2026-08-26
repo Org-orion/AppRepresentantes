@@ -12,6 +12,12 @@
 > **O risco A9 NÃO foi eliminado.** O projeto segue no Supabase Free Plan, sem backups automáticos. O
 > que mudou é que agora existe uma cópia verificada e uma prova de que ela restaura a aplicação — antes
 > não havia nem uma coisa nem outra.
+>
+> 📌 **Atualização.** A rotina automatizável foi implementada em `scripts/backup/` e está coberta por
+> testes offline. Decisões operacionais — frequência, retenção 7/4/3, RPO/RTO, redundância e a
+> permanência no Free como **aceitação explícita de risco** — em `docs/A9-ROTINA-BACKUP.md`.
+> **A rotina ainda NÃO está ativa:** falta `.pgpass`, destino externo, passphrase do GPG, primeiro ciclo
+> real e agendamento. Código de backup que nunca rodou não protege nada.
 
 ---
 
@@ -140,10 +146,10 @@ cópia dos objetos do Storage. Um sem o outro é backup incompleto.
 
 | | Item | Situação |
 |---|---|---|
-| ❌ | **Backup automático / gerenciado** | plano Free não inclui. **Este é o núcleo do A9, e continua aberto** |
+| ❌ | **Backup automático / gerenciado** | plano Free não inclui. **Este é o núcleo do A9, e continua aberto.** Decisão registrada: permanecer no Free como aceitação explícita de risco, com quatro gatilhos de reavaliação — ver `docs/A9-ROTINA-BACKUP.md` §1.1 |
 | ❌ | **PITR** | idem |
-| ❌ | Retenção definida | não há política: quantos backups guardar, por quanto tempo |
-| ❌ | Frequência definida | a execução foi pontual, não rotina |
+| 🟡 | Retenção definida | **política aprovada** (7 diários / 4 semanais / 3 mensais) e implementada; ainda não observada em execução real |
+| 🟡 | Frequência definida | **política aprovada** (diária + `prechange`); a rotina ainda não está agendada |
 | ❌ | Restore integral da plataforma | ver §5 |
 | ❌ | **Senha do user mapping do FDW** | não está em nenhum artefato de backup, por decisão de segurança. Rotacioná-la sem atualizar o mapping derruba metade do sistema — ver `docs/INCIDENTE-2026-08-19-FDW.md` |
 | ❌ | Configurações de painel | `Max rows = 1000`, agregações desabilitadas, CAPTCHA do Auth, política de senha |
