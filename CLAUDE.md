@@ -329,8 +329,12 @@ Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
    `app_dashboard_serie_diaria()`, agregados no ERP e **fora do teto**. Continuam sobre o recorte, na
    mesma tela: `totalPedidos`, `ticketMedio`, `pipeline`, `totalFaturadoMes`, `faturadosNoPeriodo` e
    `truncado` — todos precisam de `numero_pedido`, que a RPC não devolve. **Por isso o
-   `TruncationNotice` continua na tela**: mudou de significado, não deixou de valer. As demais telas
-   seguem inteiramente sobre o recorte.
+   `TruncationNotice` continua na tela**: mudou de significado, não deixou de valer.
+   **Catálogo de produtos corrigido em 09/09/2026 (A21):** `fetchProdutos` agora pagina com `.range()`
+   e devolve o catálogo inteiro, de todos os tipos — antes um produto ativo de código alto era
+   **inorçável**, invisível tanto no filtro quanto na busca por código. As demais telas
+   (`financeiro`, `acompanhamento`, `orcamentos`, `representantes`, `usuarios`) seguem inteiramente
+   sobre o recorte.
 2. **CAPTCHA nativo não habilitado** — o código já envia `captchaToken`; sem ligar no painel do Auth,
    `signInWithPassword` segue chamável direto.
 3. **`performance.ts` e `clientGroups.ts`** ainda operam sobre dados truncados e sem aviso.
@@ -377,7 +381,7 @@ Rastreadas em `docs/PLANO-SANEAMENTO.md`, com evidência e estado por etapa.
 `sessionStorage` · rewrite de SPA da Vercel (404 ao recarregar) · migrations consolidadas ·
 **escopo centralizado no banco (E1)** · **primeira RPC de negócio com agregação empurrada ao ERP,
 aplicada e validada (E2/E3)** · **série do dashboard consumindo a RPC (E5)** ·
-**seletor de representantes completo (A19)**.
+**seletor de representantes completo (A19)** · **catálogo de produtos paginado (A21)**.
 
 > **A19 — seletor de representantes, resolvido em 21/08/2026.** A lista vinha cortada: das 7.682 linhas
 > elegíveis com 243 representantes distintos, só **14** apareciam. Duas correções: `valoresDistintos`

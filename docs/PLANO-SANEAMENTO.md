@@ -1132,6 +1132,68 @@ migração cujo objetivo era não alterar número nenhum além do corrigido pela
 **Severidade: UX/semântica, a decidir.** Duas saídas: fazer `trimestre` valer de verdade (T1 = jan–mar…)
 ou remover o seletor e rotular como "Últimos 3 meses". É decisão de negócio, não de código.
 
+### A21 — Catálogo truncado tornava produto ativo inorçável — ✅ RESOLVIDO em 2026-09-09
+
+**Sintoma relatado.** Filtrando **KIT PORTA + CORRER + Sarrafo 6mm + Lacca Touch** na Seleção de
+Produtos, o chip **Cor** listava apenas `BIANCO, BLUE, GRAFITE, NERO, URBAN`. Faltava **VELAR** — e
+existem produtos VELAR nessa exata combinação (`1015356` e `1011872`, conferidos no classificador de
+produtos).
+
+**A evidência estava na própria tela:** o rótulo do canto superior direito exibia **"1000 no catálogo"**.
+Não é coincidência — é o `API_MAX_ROWS`, o mesmo teto do achado A5.
+
+**Causa.** `fetchProdutos` fazia UMA leitura sem `range`:
+
+```ts
+.from('concremprodutos_produtos')
+.select('id,codigo,...,cor,...')
+.order('codigo');          // sem .range(), sem .limit()
+```
+
+O Data API corta em 1.000. O que chegava era um **prefixo por `codigo`**, e o app tratava esse prefixo
+como se fosse o catálogo. Como a ordenação é ascendente, o que ficava de fora eram sempre os **códigos
+mais altos**.
+
+**Três consequências, todas silenciosas:**
+
+| | Consequência |
+|---|---|
+| 1 | **Produto ativo ficava inorçável.** Não aparecia por filtro nem pela busca por código — `prodsFiltrados` filtra `filtros.busca` **em memória**, sobre a mesma lista cortada. Não há busca no servidor. Um representante não conseguia adicionar o item ao orçamento de jeito nenhum |
+| 2 | **As opções dos chips saíam do recorte.** `getOpcoes` monta cada dropdown com `new Set()` sobre a lista já truncada, nas **duas** telas de orçamento. Cor que só existisse depois da linha 1.000 nunca aparecia |
+| 3 | **O rótulo mentia.** "1000 no catálogo" era o teto exibido como se fosse o total |
+
+**Mesma classe do A19** (seletor de representantes), e a cura é a mesma: percorrer em páginas de
+`API_MAX_ROWS` via `.range()` até uma página vir incompleta.
+
+**Correção — `src/services/produtos.ts`:**
+
+- **paginação** até página incompleta, devolvendo o catálogo inteiro, de todos os tipos;
+- **ordenação total**: `order('codigo')` **com desempate por `id`**. Sem isso, paginar só é seguro se
+  `codigo` for único — com repetição a ordem entre requisições não é estável, linhas trocam de página, e
+  o resultado perde umas e duplica outras;
+- **erro no meio propaga** em vez de devolver catálogo pela metade, que seria o defeito original com
+  outro disfarce;
+- **teto defensivo de 50 páginas** (50.000 produtos) contra laço infinito; se atingido, a lista volta
+  marcada como `truncado` em vez de fingir estar completa.
+
+**Nenhum filtro foi acrescentado nesta camada, inclusive `situacao`.** A consulta já trazia o campo e
+nunca o usava para filtrar — produtos inativos consomem vagas do teto. Filtrar aqui mudaria o que a tela
+mostra hoje, e isso é **decisão de negócio**, não correção de defeito. Fica registrado como opção.
+
+**Cobertura:** 12 testes em `src/services/produtos.test.ts`, incluindo o caso real com VELAR apenas na
+segunda página. Cobrem múltiplas páginas, múltiplo exato do teto (página cheia seguida de vazia),
+catálogo vazio, `data` nulo, ausência de perda ou duplicação entre páginas, a ordenação total, todos os
+tipos de produto vindo juntos, e propagação de erro na primeira página e no meio.
+
+> ⚠️ **Brecha que permanece.** Se o `Max rows` do painel for **reduzido** abaixo de `API_MAX_ROWS`, a
+> primeira página vem curta, o laço para cedo e o truncamento silencioso volta. Blindar exigiria
+> `count: 'exact'` na primeira leitura — que é um `COUNT(*)` atravessando o FDW até o ERP a cada carga de
+> catálogo, decisão de capacidade ainda não tomada. Ver `src/constants/apiLimits.ts`.
+
+> ⚠️ **Não medido em produção.** O mecanismo está provado por teste, mas não foram executados `SELECT`
+> para confirmar quantos produtos existem além dos 1.000 nem em que posição VELAR cai. A verificação de
+> aceite é visual: o rótulo deve deixar de exibir `1000`, e VELAR deve aparecer no chip **Cor**.
+
 ### Dívidas conhecidas assumidas na E5 — não corrigidas
 
 | | Dívida | Situação |
