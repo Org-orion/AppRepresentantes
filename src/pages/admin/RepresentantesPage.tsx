@@ -28,11 +28,13 @@ function RepModal({
   onClose,
   onSave,
   saving,
+  erro,
 }: {
   initial: FormData & { id?: string };
   onClose: () => void;
   onSave: (data: FormData & { id?: string }) => void;
   saving: boolean;
+  erro?: string;
 }) {
   const [form, setForm] = useState(initial);
 
@@ -114,7 +116,13 @@ function RepModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100">
+        <div className="flex flex-col gap-2 px-5 py-4 border-t border-gray-100">
+          {erro && (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {erro}
+            </p>
+          )}
+          <div className="flex items-center justify-end gap-2">
           <button
             onClick={onClose}
             className="h-9 px-4 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
@@ -130,6 +138,7 @@ function RepModal({
             <Check className="w-3.5 h-3.5" />
             Salvar
           </button>
+          </div>
         </div>
       </div>
     </div>
@@ -141,6 +150,7 @@ export default function AdminRepresentantesPage() {
   const qc = useQueryClient();
   const [modal, setModal] = useState<(FormData & { id?: string }) | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<RepresentanteERP | null>(null);
+  const [saveErro, setSaveErro] = useState('');
 
   const { data: reps = [], isLoading, error: repsError } = useQuery({
     queryKey: ['admin-representantes'],
@@ -156,10 +166,14 @@ export default function AdminRepresentantesPage() {
         await createRepresentante(payload);
       }
     },
+    onMutate: () => setSaveErro(''),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-representantes'] });
       setModal(null);
     },
+    // O banco exige que `representante_erp` comece pelo `codigo`
+    // (rep_codigo_prefixo_chk): o escopo do representante deriva desse campo.
+    onError: (err: Error) => setSaveErro(err.message),
   });
 
   const toggleMutation = useMutation({
@@ -175,6 +189,12 @@ export default function AdminRepresentantesPage() {
       setConfirmDelete(null);
     },
   });
+
+  const deleteErro = deleteMutation.error
+    ? deleteMutation.error instanceof Error
+      ? deleteMutation.error.message
+      : 'Falha ao excluir o representante.'
+    : null;
 
   return (
     <PageContainer size="lg">
@@ -270,9 +290,10 @@ export default function AdminRepresentantesPage() {
       {modal && (
         <RepModal
           initial={modal}
-          onClose={() => setModal(null)}
+          onClose={() => { setModal(null); setSaveErro(''); }}
           onSave={form => saveMutation.mutate(form)}
           saving={saveMutation.isPending}
+          erro={saveErro}
         />
       )}
 
@@ -288,9 +309,14 @@ export default function AdminRepresentantesPage() {
             <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mb-4">
               Isso também removerá o vínculo com todos os usuários.
             </p>
+            {deleteErro && (
+              <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+                {deleteErro}
+              </p>
+            )}
             <div className="flex gap-2 justify-end">
               <button
-                onClick={() => setConfirmDelete(null)}
+                onClick={() => { deleteMutation.reset(); setConfirmDelete(null); }}
                 className="h-9 px-4 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
                 Cancelar

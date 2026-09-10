@@ -172,7 +172,7 @@ function CriarModal({
 
 // ─── Modal Editar Usuário ──────────────────────────────
 function EditarModal({
-  usuario, todosReps, onClose, saving, onUpdate, onLink, onUnlink, onAlterarSenha, savingSenha, senhaError, senhaSucesso,
+  usuario, todosReps, onClose, saving, onUpdate, onLink, onUnlink, onAlterarSenha, savingSenha, senhaError, senhaSucesso, acessoError,
 }: {
   usuario: UsuarioComReps;
   todosReps: RepresentanteERP[];
@@ -185,6 +185,7 @@ function EditarModal({
   savingSenha: boolean;
   senhaError?: string;
   senhaSucesso?: boolean;
+  acessoError?: string;
 }) {
   const [nome, setNome] = useState(usuario.nome);
   const [tipo, setTipo] = useState<TipoUsuario>(getTipo(usuario));
@@ -333,7 +334,13 @@ function EditarModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 flex-shrink-0">
+        <div className="flex flex-col gap-2 px-5 py-4 border-t border-gray-100 flex-shrink-0">
+          {acessoError && (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {acessoError}
+            </p>
+          )}
+          <div className="flex items-center justify-end gap-2">
           <button onClick={onClose} className="h-9 px-4 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
             Fechar
           </button>
@@ -346,6 +353,7 @@ function EditarModal({
             <Check className="w-3.5 h-3.5" />
             Salvar
           </button>
+          </div>
         </div>
       </div>
     </div>
@@ -377,6 +385,7 @@ export default function AdminUsuariosPage() {
   const qc = useQueryClient();
   const [showCriar, setShowCriar] = useState(false);
   const [editando, setEditando]   = useState<UsuarioComReps | null>(null);
+  const [acessoError, setAcessoError] = useState('');
   const [criarError, setCriarError] = useState('');
   const [senhaError, setSenhaError] = useState('');
   const [senhaSucesso, setSenhaSucesso] = useState(false);
@@ -404,7 +413,14 @@ export default function AdminUsuariosPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, nome, perfil, grupoIds }: { id: string; nome: string; perfil: Perfil; grupoIds: string[] }) =>
       saveUsuarioAcesso(id, nome, perfil, grupoIds),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-usuarios'] }),
+    onMutate: () => setAcessoError(''),
+    // Os vinculos com representante ja sao gravados no clique do checkbox;
+    // aqui fechamos o modal para o Salvar ter um desfecho visivel.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-usuarios'] });
+      setEditando(null);
+    },
+    onError: (err: Error) => setAcessoError(err.message),
   });
 
   const toggleAtivoMutation = useMutation({
@@ -414,12 +430,16 @@ export default function AdminUsuariosPage() {
 
   const linkMutation = useMutation({
     mutationFn: ({ usuarioId, repId }: { usuarioId: string; repId: string }) => linkRepresentante(usuarioId, repId),
+    onMutate: () => setAcessoError(''),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-usuarios'] }),
+    onError: (err: Error) => setAcessoError(`Falha ao vincular o representante: ${err.message}`),
   });
 
   const unlinkMutation = useMutation({
     mutationFn: ({ usuarioId, repId }: { usuarioId: string; repId: string }) => unlinkRepresentante(usuarioId, repId),
+    onMutate: () => setAcessoError(''),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-usuarios'] }),
+    onError: (err: Error) => setAcessoError(`Falha ao desvincular o representante: ${err.message}`),
   });
 
   const senhaMutation = useMutation({
@@ -531,7 +551,7 @@ export default function AdminUsuariosPage() {
         <EditarModal
           usuario={usuarioEditandoAtualizado}
           todosReps={todosReps}
-          onClose={() => { setEditando(null); setSenhaError(''); setSenhaSucesso(false); }}
+          onClose={() => { setEditando(null); setSenhaError(''); setSenhaSucesso(false); setAcessoError(''); }}
           saving={updateMutation.isPending}
           onUpdate={(nome, perfil, grupoIds) => updateMutation.mutate({ id: usuarioEditandoAtualizado.id, nome, perfil, grupoIds })}
           onLink={repId => linkMutation.mutate({ usuarioId: usuarioEditandoAtualizado.id, repId })}
@@ -540,6 +560,7 @@ export default function AdminUsuariosPage() {
           savingSenha={senhaMutation.isPending}
           senhaError={senhaError}
           senhaSucesso={senhaSucesso}
+          acessoError={acessoError}
         />
       )}
     </PageContainer>
