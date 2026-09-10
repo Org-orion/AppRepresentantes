@@ -23,7 +23,15 @@ export function getUserDataScope(user?: User | null): DataScope {
   const p = perfilDoUsuario(user?.usuario);
   if (isGlobal(p)) return { type: 'global' };
   if (p === 'diretor') return { type: 'director', groups: user?.grupos ?? [] };
-  return { type: 'representative', repCodes: (user?.repCodes ?? []).map(r => r.representante_erp) };
+  // `repCodesFiltro` traz TODAS as grafias que o ERP usa para os códigos do
+  // usuário (via app_my_rep_codes). O ERP não normaliza essa coluna: o mesmo
+  // código aparece como "40004965 - ... DANILO - 15%" e "40004965 - ... DANILO 15".
+  // Filtrar pelo cadastro do Portal enxergaria só uma das grafias.
+  // Fallback para o cadastro quando a RPC não respondeu — mais estreito, nunca
+  // mais largo que a RLS.
+  const doCadastro = (user?.repCodes ?? []).map(r => r.representante_erp);
+  const codes = user?.repCodesFiltro?.length ? user.repCodesFiltro : doCadastro;
+  return { type: 'representative', repCodes: codes };
 }
 
 /** Normaliza grupo_cliente: null/vazio → 'SEM GRUPO' (espelha app_norm_grupo no SQL). */

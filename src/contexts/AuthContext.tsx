@@ -96,6 +96,24 @@ async function buildUser(authUser: SupabaseAuthUser): Promise<User> {
     created_at: '',
   };
 
+  // Grafias do ERP para os códigos vinculados — MESMA fonte que a RLS usa
+  // (app_my_rep_codes), para o filtro do frontend não cortar o que o banco
+  // libera. Sem isso o escopo do app fica mais estreito que o do banco e
+  // pedidos somem em silêncio.
+  //
+  // Se a RPC falhar, cai para as grafias cadastradas: escopo mais estreito,
+  // nunca mais largo.
+  let repCodesFiltro = repCodes.map(r => r.representante_erp);
+  {
+    const { data: grafias, error: grafiasErro } = await supabase.rpc('app_my_rep_codes');
+    if (!grafiasErro && Array.isArray(grafias)) {
+      const lista = (grafias as unknown[])
+        .map(g => (typeof g === 'string' ? g : (g as { representante_erp?: string })?.representante_erp))
+        .filter((g): g is string => typeof g === 'string' && g.trim() !== '');
+      if (lista.length > 0) repCodesFiltro = Array.from(new Set(lista));
+    }
+  }
+
   // Diretor: carrega os grupos de cliente vinculados (escopo de dados).
   // Resiliente — [] se a migração de grupos ainda não estiver aplicada.
   const grupos = perfilDoUsuario(usuario) === 'diretor'
@@ -121,6 +139,7 @@ async function buildUser(authUser: SupabaseAuthUser): Promise<User> {
     usuario,
     representante,
     repCodes,
+    repCodesFiltro,
     grupos,
   };
 }

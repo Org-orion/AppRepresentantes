@@ -370,6 +370,10 @@ export interface User {
   email: string;
   representante?: Representante;   // mock
   usuario?: Usuario;               // real (Supabase)
-  repCodes?: RepresentanteERP[];   // rep codes do ERP vinculados
+  repCodes?: RepresentanteERP[];   // rep codes do ERP vinculados (cadastro do Portal)
+  // Grafias reais que o ERP usa para os MESMOS códigos — fonte do filtro de
+  // dados. Vem de app_my_rep_codes(); o cadastro do Portal traz só uma grafia e
+  // o ERP costuma ter outras para o mesmo representante.
+  repCodesFiltro?: string[];
   grupos?: string[];               // nomes dos grupos vinculados (perfil Diretor)
 }

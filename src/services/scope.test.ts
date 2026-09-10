@@ -45,6 +45,34 @@ describe('getUserDataScope', () => {
     expect(scope).toEqual({ type: 'representative', repCodes: ['40055415'] });
   });
 
+  it('usa as grafias do ERP quando a RPC as trouxe, não só a grafia cadastrada', () => {
+    // O ERP grava o mesmo código com mais de uma grafia; filtrar pelo cadastro
+    // do Portal deixaria metade dos pedidos invisível.
+    const scope = getUserDataScope(usuario('representante', {
+      repCodes: [repCode('40004965 - DISTRIBUIDORA / DANILO 15')],
+      repCodesFiltro: [
+        '40004965 - DISTRIBUIDORA / DANILO 15',
+        '40004965 - DISTRIBUIDORA / DANILO - 15%',
+      ],
+    }));
+    expect(scope).toEqual({
+      type: 'representative',
+      repCodes: [
+        '40004965 - DISTRIBUIDORA / DANILO 15',
+        '40004965 - DISTRIBUIDORA / DANILO - 15%',
+      ],
+    });
+  });
+
+  it('cai para a grafia cadastrada quando a RPC não respondeu', () => {
+    // Fallback deliberado: escopo mais estreito, nunca mais largo que a RLS.
+    const scope = getUserDataScope(usuario('representante', {
+      repCodes: [repCode('40055415')],
+      repCodesFiltro: [],
+    }));
+    expect(scope).toEqual({ type: 'representative', repCodes: ['40055415'] });
+  });
+
   it('trata operador como escopo por rep code, não global', () => {
     expect(getUserDataScope(usuario('operador')).type).toBe('representative');
   });
