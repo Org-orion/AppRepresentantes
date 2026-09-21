@@ -1,6 +1,6 @@
 import { Sparkles } from 'lucide-react';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { formatCurrencyK, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate, formatCurrencyEixo } from '@/utils/formatters';
 import { MOV_META } from '@/pages/ClientesPage';
 import { STATUS_COLOR, type ClientStat } from '@/hooks/useGroupClientVisualAnalytics';
 
@@ -16,8 +16,8 @@ function Tip({ active, payload }: any) {
         <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${meta.chip}`}>{meta.label}</span>
       </div>
       <div className="text-[11px] text-gray-500 space-y-0.5 tabular-nums">
-        <p>Valor total: <b className="text-gray-800">{formatCurrencyK(s.total)}</b> · {s.pct.toFixed(0)}% do grupo</p>
-        <p>Média/pedido: <b className="text-gray-800">{formatCurrencyK(s.ticket)}</b> · {s.pedidos} pedidos</p>
+        <p>Valor total: <b className="text-gray-800">{formatCurrency(s.total)}</b> · {s.pct.toFixed(0)}% do grupo</p>
+        <p>Média/pedido: <b className="text-gray-800">{formatCurrency(s.ticket)}</b> · {s.pedidos} pedidos</p>
         <p>Compra a cada <b className="text-gray-800">{s.intervalo} dias</b></p>
         {s.ultimo && <p>Última compra: {formatDate(s.ultimo)}</p>}
       </div>
@@ -40,7 +40,7 @@ export default function GroupClientValueFrequencyScatter({ data, onOpen }: { dat
               <CartesianGrid strokeDasharray="3 3" stroke="#eef2ee" />
               <XAxis type="number" dataKey="intervalo" name="Intervalo" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }}
                 label={{ value: 'dias entre compras  (← mais frequente)', position: 'insideBottom', offset: -12, fontSize: 10, fill: '#9ca3af' }} />
-              <YAxis type="number" dataKey="total" name="Valor" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} tickFormatter={(v) => formatCurrencyK(Number(v))} width={54} />
+              <YAxis type="number" dataKey="total" name="Valor" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} tickFormatter={(v) => formatCurrencyEixo(Number(v))} width={54} />
               <ZAxis type="number" dataKey="ticket" range={[50, 420]} name="Média/pedido" />
               <Tooltip content={<Tip />} cursor={{ strokeDasharray: '3 3' }} />
               <Scatter data={data} fillOpacity={0.72} onClick={(p: { payload?: ClientStat }) => p?.payload && onOpen?.(p.payload)} style={{ cursor: onOpen ? 'pointer' : 'default' }}>

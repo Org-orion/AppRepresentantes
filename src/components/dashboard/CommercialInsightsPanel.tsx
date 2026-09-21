@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Sparkles, TrendingUp, AlertTriangle, Target, Lightbulb } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { useRepPerformance, useGroupPerformance } from '@/hooks/useRepPerformance';
-import { formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import { cn } from '@/utils/cn';
 
 type Tone = 'good' | 'risk' | 'info' | 'opp';
@@ -27,7 +27,7 @@ export default function CommercialInsightsPanel() {
     }
     if (reps.length > 0) {
       const top = [...reps].sort((a, b) => b.totalVendido - a.totalVendido)[0];
-      out.push({ tone: 'good', text: `${top.representante} lidera em receita com ${formatCurrencyK(top.totalVendido)} (score ${top.score}).` });
+      out.push({ tone: 'good', text: `${top.representante} lidera em receita com ${formatCurrency(top.totalVendido)} (score ${top.score}).` });
 
       const porAtraso = [...reps].sort((a, b) => (b.clientesAtrasados + b.clientesDormentes) - (a.clientesAtrasados + a.clientesDormentes))[0];
       const totAtr = porAtraso.clientesAtrasados + porAtraso.clientesDormentes;

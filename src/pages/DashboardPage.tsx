@@ -9,7 +9,7 @@ import { useOrcamentos } from '@/hooks/useOrcamentos';
 import { useCarteira } from '@/hooks/useCarteira';
 import { useDashboardStats } from '@/hooks/useDashboardStats';
 import { useRepresentantesUnicos } from '@/hooks/usePedidosVenda';
-import { formatCurrency, formatCurrencyK, formatDate, formatDateLong } from '@/utils/formatters';
+import { formatCurrency, formatDate, formatDateLong } from '@/utils/formatters';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import PageContainer from '@/components/ui/PageContainer';
 import TruncationNotice from '@/components/ui/TruncationNotice';
@@ -29,6 +29,7 @@ import { cn } from '@/utils/cn';
 import { Link } from 'react-router-dom';
 import type { PipelineCounts } from '@/services/dashboard';
 import type { ClienteCarteira } from '@/services/carteira';
+import ValorAjustavel from '@/components/ui/ValorAjustavel';
 
 // ─── Constantes ────────────────────────────────────────────────
 const MESES_LABEL = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -158,9 +159,10 @@ function RichKPICard({
           <Icon className="w-4 h-4" />
         </div>
       </div>
-      <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1.5 tabular-nums whitespace-nowrap leading-tight">
-        {loading ? '···' : format(animated)}
-      </p>
+      <div className="mt-1.5">
+        <ValorAjustavel valor={loading ? '···' : format(animated)}
+          className="font-bold text-gray-900" max="1.5rem" />
+      </div>
       <div className="flex items-center justify-between gap-2 mt-0.5">
         <p className="text-xs text-gray-500 truncate">{subtitle}</p>
         {trend && (
@@ -701,7 +703,7 @@ export default function DashboardPage() {
 
     if (stats && stats.totalVendidoMesAnt > 0) {
       list.push(trendMes >= 0
-        ? { tone: 'good', title: `Vendas em alta`, text: `Crescimento de ${trendMes.toFixed(1)}% vs ${PERIODO_ANT[periodo]} — ${formatCurrencyK(stats.totalVendidoMes)} em ${periodoLabel}.` }
+        ? { tone: 'good', title: `Vendas em alta`, text: `Crescimento de ${trendMes.toFixed(1)}% vs ${PERIODO_ANT[periodo]} — ${formatCurrency(stats.totalVendidoMes)} em ${periodoLabel}.` }
         : { tone: 'risk', title: `Vendas em queda`, text: `Retração de ${Math.abs(trendMes).toFixed(1)}% vs ${PERIODO_ANT[periodo]}. Vale reforçar a prospecção.` });
     }
     list.push(conversao >= 30
@@ -810,14 +812,14 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           <RichKPICard title="Carteira Total" value={totalClientes} format={n => Math.round(n).toLocaleString('pt-BR')}
             subtitle="clientes ativos" icon={Users} accent="blue" progress={100} />
-          <RichKPICard title={`Vendido · ${periodoLabel}`} value={stats?.totalVendidoMes ?? 0} format={formatCurrencyK}
+          <RichKPICard title={`Vendido · ${periodoLabel}`} value={stats?.totalVendidoMes ?? 0} format={formatCurrency}
             subtitle={`${stats?.pedidosNoPeriodo ?? 0} pedido(s)`} icon={DollarSign} accent="green" loading={loading}
             spark={vendasSerie.length > 1 ? vendasSerie : undefined}
             trend={stats && stats.totalVendidoMesAnt > 0 ? { value: trendMes, label: `vs ${PERIODO_ANT[periodo]}` } : undefined} />
-          <RichKPICard title={`Faturado · ${periodoLabel}`} value={stats?.totalFaturadoMes ?? 0} format={formatCurrencyK}
+          <RichKPICard title={`Faturado · ${periodoLabel}`} value={stats?.totalFaturadoMes ?? 0} format={formatCurrency}
             subtitle={`${stats?.faturadosNoPeriodo ?? 0} pedido(s) com NF`} icon={CreditCard} accent="purple" loading={loading}
             progress={faturadoPct} />
-          <RichKPICard title="Comissão Prevista" value={comissao} format={formatCurrencyK}
+          <RichKPICard title="Comissão Prevista" value={comissao} format={formatCurrency}
             subtitle={`${rep?.comissao_percentual ?? 0}% s/ vendas`} icon={Award} accent="amber" loading={loading}
             progress={comissaoPct} />
         </div>
@@ -928,7 +930,7 @@ export default function DashboardPage() {
               <RankingList items={topClientes.map(c => ({
                 nome: c.cliente_fantasia?.trim() || c.cliente_nome || 'Cliente sem nome',
                 sub: `${c.total_pedidos} pedido(s)${c.cliente_uf ? ` · ${c.cliente_uf}` : ''}`,
-                valor: c.total_comprado > 0 ? formatCurrencyK(c.total_comprado) : '—',
+                valor: c.total_comprado > 0 ? formatCurrency(c.total_comprado) : '—',
               }))} />
             </CardContent>
           </Card>
@@ -950,7 +952,7 @@ export default function DashboardPage() {
                 <>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs text-gray-400">
-                      Total: <strong className="text-gray-700">{stats?.pipeline.total ?? 0}</strong> pedidos · Média de pedido <strong className="text-gray-700">{formatCurrencyK(stats?.ticketMedio ?? 0)}</strong>
+                      Total: <strong className="text-gray-700">{stats?.pipeline.total ?? 0}</strong> pedidos · Média de pedido <strong className="text-gray-700">{formatCurrency(stats?.ticketMedio ?? 0)}</strong>
                     </span>
                     <button type="button" onClick={() => setPipelineAberto(false)}
                       className="text-xs text-gray-400 hover:text-gray-600 inline-flex items-center gap-1">
@@ -971,7 +973,7 @@ export default function DashboardPage() {
                   </span>
                   <div className="min-w-0">
                     <p className="text-xs font-semibold text-gray-800"><span className="tabular-nums">{stats?.pipeline.total ?? 0}</span> pedidos · 9 estágios</p>
-                    <p className="text-[11px] text-gray-400 tabular-nums">Média de pedido {formatCurrencyK(stats?.ticketMedio ?? 0)}</p>
+                    <p className="text-[11px] text-gray-400 tabular-nums">Média de pedido {formatCurrency(stats?.ticketMedio ?? 0)}</p>
                   </div>
                 </div>
                 <span className="flex items-center gap-1 text-xs font-medium text-[hsl(142,93%,8%)] flex-shrink-0">

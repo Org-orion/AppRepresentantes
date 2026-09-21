@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { formatDate, formatCurrency, formatCurrencyK } from '@/utils/formatters';
+import { formatDate, formatCurrency } from '@/utils/formatters';
 import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
 import PageContainer from '@/components/ui/PageContainer';
@@ -21,6 +21,7 @@ import { useOrcamentos } from '@/hooks/useOrcamentos';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { enviarOrcamento, excluirOrcamento, duplicarOrcamento } from '@/services/orcamentos';
 import type { Orcamento, OrcamentoStatusReal } from '@/types';
+import ValorAjustavel from '@/components/ui/ValorAjustavel';
 
 // ─── Status config ─────────────────────────────────────
 const STATUS_CONFIG: Record<OrcamentoStatusReal, {
@@ -153,7 +154,7 @@ function QuoteCard({ orc, a, index }: { orc: Orcamento; a: QuoteActions; index: 
             {orc.obra_referencia && <p className="text-xs text-gray-400 mt-0.5 truncate">Obra: {orc.obra_referencia}</p>}
           </div>
           <p className={cn('font-bold text-base tabular-nums flex-shrink-0', valor > 0 ? 'text-gray-900' : 'text-gray-300')}>
-            {valor > 0 ? formatCurrencyK(valor) : '—'}
+            {valor > 0 ? formatCurrency(valor) : '—'}
           </p>
         </div>
 
@@ -272,7 +273,7 @@ function QuoteTable({ orcs, a }: { orcs: Orcamento[]; a: QuoteActions }) {
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 truncate max-w-[140px]">{o.obra_referencia ?? '—'}</td>
                   <td className="px-4 py-3 text-right tabular-nums font-semibold text-emerald-700">
-                    {valor > 0 ? formatCurrencyK(valor) : <span className="text-gray-300 font-normal">—</span>}
+                    {valor > 0 ? formatCurrency(valor) : <span className="text-gray-300 font-normal">—</span>}
                   </td>
                   <td className="px-4 py-3 text-center tabular-nums text-gray-700">{numProdutos(o)}</td>
                   <td className="px-4 py-3">
@@ -336,7 +337,7 @@ function QuoteKanban({ orcs, a }: { orcs: Orcamento[]; a: QuoteActions }) {
                       {o.obra_referencia && <p className="text-[11px] text-gray-400 truncate mt-0.5">{o.obra_referencia}</p>}
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-xs font-bold text-emerald-700 tabular-nums">
-                          {valor > 0 ? formatCurrencyK(valor) : <span className="text-gray-300 font-normal">—</span>}
+                          {valor > 0 ? formatCurrency(valor) : <span className="text-gray-300 font-normal">—</span>}
                         </span>
                         <span className="text-[10px] text-gray-400 tabular-nums">{formatDate(o.created_at)}</span>
                       </div>
@@ -377,7 +378,7 @@ function KpiCard({ label, value, tone, active, onClick, icon: Icon }: {
         <Icon className="w-3.5 h-3.5 flex-shrink-0" />
         <p className="text-[10px] font-semibold uppercase tracking-wider truncate">{label}</p>
       </div>
-      <p className={cn('text-lg font-bold mt-1 tabular-nums leading-tight', tone ?? 'text-gray-900')}>{value}</p>
+      <div className="mt-1"><ValorAjustavel valor={value} className={cn('font-bold', tone ?? 'text-gray-900')} /></div>
     </button>
   );
 }
@@ -546,7 +547,7 @@ export default function OrcamentosPage() {
         <KpiCard icon={XCircle} label="Rejeitados" value={String(kpis.rejeitado)} tone="text-red-600"
           active={statusFilter === 'rejeitado'} onClick={() => toggleStatus('rejeitado')} />
         <KpiCard icon={DollarSign} label="Valor Pipeline" tone="text-emerald-700"
-          value={kpis.pipelineValue > 0 ? formatCurrencyK(kpis.pipelineValue) : '—'} />
+          value={kpis.pipelineValue > 0 ? formatCurrency(kpis.pipelineValue) : '—'} />
       </div>
 
       {/* Toolbar: busca + view switcher */}

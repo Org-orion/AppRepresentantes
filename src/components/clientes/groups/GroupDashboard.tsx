@@ -4,15 +4,15 @@ import {
   AlertTriangle, Moon, CalendarClock, Briefcase, Layers, Sparkles, Crown, TrendingUp, Lightbulb,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 import type { ClientGroup, GroupStatus } from '@/hooks/useClientGroups';
 import type { ClienteCarteira } from '@/services/carteira';
 import GroupClientVisualAnalytics from './GroupClientVisualAnalytics';
+import ValorAjustavel from '@/components/ui/ValorAjustavel';
 
+// Valor inteiro, sem abreviar.
 function fmtK(v: number): string {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1).replace('.', ',')}M`;
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1).replace('.', ',')}k`;
-  return v > 0 ? `R$ ${v.toFixed(0)}` : 'R$ 0';
+  return formatCurrency(v);
 }
 function nome(c: ClienteCarteira) { return c.cliente_fantasia?.trim() || c.cliente_nome?.trim() || 'Sem nome'; }
 
@@ -26,7 +26,7 @@ function Kpi({ icon: Icon, label, value, sub, tone, title }: { icon: React.Eleme
   return (
     <div className="rounded-2xl border border-gray-200/70 bg-white p-3 min-w-0" title={title}>
       <span className={cn('w-8 h-8 rounded-lg flex items-center justify-center', tone)}><Icon className="w-4 h-4" /></span>
-      <p className="text-lg font-bold text-gray-900 tabular-nums mt-2 truncate">{value}</p>
+      <div className="mt-2"><ValorAjustavel valor={value} className="font-bold text-gray-900" /></div>
       <p className="text-[11px] text-gray-400 truncate">{label}</p>
       {sub && <p className="text-[10px] text-gray-400 truncate">{sub}</p>}
     </div>

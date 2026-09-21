@@ -2,9 +2,10 @@ import { useMemo } from 'react';
 import { Globe2, Layers, Briefcase, DollarSign, PieChart } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { useRepPerformance, useGroupPerformance } from '@/hooks/useRepPerformance';
-import { formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import { cn } from '@/utils/cn';
 import type { DashboardFiltros } from '@/services/dashboard';
+import ValorAjustavel from '@/components/ui/ValorAjustavel';
 
 // Tons de verde para as fatias do 1º, 2º e 3º maiores grupos
 const SHADES = ['#059669', '#10b981', '#34d399'];
@@ -13,7 +14,7 @@ function Tile({ icon: Icon, label, value, tone }: { icon: React.ElementType; lab
   return (
     <div className="rounded-2xl border border-gray-200/70 bg-white p-3 min-w-0">
       <span className={cn('w-8 h-8 rounded-lg flex items-center justify-center', tone)}><Icon className="w-4 h-4" /></span>
-      <p className="text-lg font-bold text-gray-900 tabular-nums mt-2 truncate">{value}</p>
+      <div className="mt-2"><ValorAjustavel valor={value} className="font-bold text-gray-900" /></div>
       <p className="text-[11px] text-gray-400 truncate">{label}</p>
     </div>
   );
@@ -49,10 +50,10 @@ export default function PanoramaGlobal({ period }: { period?: DashboardFiltros }
         ) : (
           <>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-              <Tile icon={DollarSign} label="Valor total"      value={formatCurrencyK(receita)}            tone="bg-emerald-50 text-emerald-600" />
+              <Tile icon={DollarSign} label="Valor total"      value={formatCurrency(receita)}            tone="bg-emerald-50 text-emerald-600" />
               <Tile icon={Layers}     label="Grupos ativos"    value={grupos.length.toLocaleString('pt-BR')} tone="bg-indigo-50 text-indigo-600" />
               <Tile icon={Briefcase}  label="Representantes"    value={reps.length.toLocaleString('pt-BR')}   tone="bg-blue-50 text-blue-600" />
-              <Tile icon={DollarSign} label="Média de pedido"   value={formatCurrencyK(ticket)}             tone="bg-amber-50 text-amber-600" />
+              <Tile icon={DollarSign} label="Média de pedido"   value={formatCurrency(ticket)}             tone="bg-amber-50 text-amber-600" />
             </div>
             {/* Concentração de receita */}
             {grupos.length > 0 && (
@@ -68,7 +69,7 @@ export default function PanoramaGlobal({ period }: { period?: DashboardFiltros }
                       key={g.grupo}
                       className="h-full flex items-center px-2 min-w-0 text-white border-r-2 border-white transition-all duration-700"
                       style={{ width: `${g.pctReceita}%`, backgroundColor: SHADES[i] }}
-                      title={`${g.grupo}: ${g.pctReceita.toFixed(0)}% · ${formatCurrencyK(g.receita)}`}
+                      title={`${g.grupo}: ${g.pctReceita.toFixed(0)}% · ${formatCurrency(g.receita)}`}
                     >
                       <span className="text-[10px] font-semibold truncate">{g.grupo}</span>
                       <span className="text-[10px] font-bold tabular-nums ml-auto pl-1 flex-shrink-0">{g.pctReceita.toFixed(0)}%</span>

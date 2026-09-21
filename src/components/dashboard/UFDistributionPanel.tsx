@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { MapPin } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { useAcompanhamento } from '@/hooks/useAcompanhamento';
-import { formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import { periodoRange, type DashboardFiltros } from '@/services/dashboard';
 
 interface UFAgg { uf: string; receita: number; pedidos: number; clientes: number; }
@@ -66,7 +66,7 @@ export default function UFDistributionPanel({ period }: { period?: DashboardFilt
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <span className="text-[11px] text-gray-500 tabular-nums">{l.pedidos} pedidos · {l.clientes} clientes</span>
-                        <span className="text-xs font-bold text-emerald-700 tabular-nums">{formatCurrencyK(l.receita)}</span>
+                        <span className="text-xs font-bold text-emerald-700 tabular-nums">{formatCurrency(l.receita)}</span>
                       </div>
                       <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                         <div className="h-full rounded-full bg-emerald-500/80 transition-all duration-700" style={{ width: `${(l.receita / max) * 100}%` }} />

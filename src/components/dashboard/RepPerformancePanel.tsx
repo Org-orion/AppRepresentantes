@@ -3,10 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { UsersRound, X, ShoppingCart, DollarSign, UserCheck, AlertTriangle, Moon, Award, CalendarClock, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { useRepPerformance } from '@/hooks/useRepPerformance';
-import { formatCurrencyK, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 import { cn } from '@/utils/cn';
 import type { RepPerf, RepBadge } from '@/services/performance';
 import type { DashboardFiltros } from '@/services/dashboard';
+import ValorAjustavel from '@/components/ui/ValorAjustavel';
 
 const BADGE: Record<RepBadge, { label: string; cls: string; bar: string }> = {
   excelente: { label: 'Excelente', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', bar: 'bg-emerald-500' },
@@ -43,7 +44,7 @@ function Metric({ icon: Icon, label, value, tone }: { icon: React.ElementType; l
   return (
     <div className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
       <div className="flex items-center gap-1.5 text-gray-400"><Icon className="w-3.5 h-3.5" /><span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span></div>
-      <p className={cn('text-base font-bold tabular-nums mt-0.5', tone ?? 'text-gray-900')}>{value}</p>
+      <div className="mt-0.5"><ValorAjustavel valor={value} className={cn('font-bold', tone ?? 'text-gray-900')} max="1rem" /></div>
     </div>
   );
 }
@@ -112,7 +113,7 @@ export default function RepPerformancePanel({ period }: { period?: DashboardFilt
                     <span className={cn('text-[9px] font-semibold px-1.5 py-0.5 rounded-full border', BADGE[r.badge].cls)}>{BADGE[r.badge].label}</span>
                   </div>
                   <p className="text-[13px] font-semibold text-gray-900 truncate mt-1">{r.representante}</p>
-                  <p className="text-lg font-bold text-emerald-700 tabular-nums leading-none mt-1">{formatCurrencyK(r.totalVendido)}</p>
+                  <p className="text-lg font-bold text-emerald-700 tabular-nums leading-none mt-1">{formatCurrency(r.totalVendido)}</p>
                   <div className="flex items-center gap-1.5 mt-2">
                     <div className="h-1.5 flex-1 rounded-full bg-gray-100 overflow-hidden"><div className={cn('h-full rounded-full', BADGE[r.badge].bar)} style={{ width: `${r.score}%` }} /></div>
                     <span className="text-[10px] font-bold text-gray-500 tabular-nums">{r.score}</span>
@@ -170,7 +171,7 @@ export default function RepPerformancePanel({ period }: { period?: DashboardFilt
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-700">
                         <div className="flex items-center justify-end gap-2">
                           <div className="hidden sm:block h-1 w-16 rounded-full bg-gray-100 overflow-hidden"><div className="h-full rounded-full bg-emerald-500/70" style={{ width: `${(r.totalVendido / maxRec) * 100}%` }} /></div>
-                          {formatCurrencyK(r.totalVendido)}
+                          {formatCurrency(r.totalVendido)}
                         </div>
                       </td>
                       <td className="px-3 py-2 text-center tabular-nums text-gray-600">{r.pedidos}</td>
@@ -188,7 +189,7 @@ export default function RepPerformancePanel({ period }: { period?: DashboardFilt
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-gray-700">{formatCurrencyK(r.ticketMedio)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-700">{formatCurrency(r.ticketMedio)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -248,9 +249,9 @@ export default function RepPerformancePanel({ period }: { period?: DashboardFilt
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Metric icon={DollarSign} label="Valor" value={formatCurrencyK(sel.totalVendido)} tone="text-emerald-700" />
+                  <Metric icon={DollarSign} label="Valor" value={formatCurrency(sel.totalVendido)} tone="text-emerald-700" />
                   <Metric icon={ShoppingCart} label="Pedidos" value={String(sel.pedidos)} />
-                  <Metric icon={DollarSign} label="Média de pedido" value={formatCurrencyK(sel.ticketMedio)} />
+                  <Metric icon={DollarSign} label="Média de pedido" value={formatCurrency(sel.ticketMedio)} />
                   <Metric icon={UsersRound} label="Clientes" value={String(sel.clientes)} />
                 </div>
                 <div className="grid grid-cols-3 gap-2">

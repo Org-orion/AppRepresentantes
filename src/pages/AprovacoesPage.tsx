@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { formatDate, formatCurrency, formatCurrencyK } from '@/utils/formatters';
+import { formatDate, formatCurrency } from '@/utils/formatters';
 import Avatar from '@/components/ui/Avatar';
 import { FilterBar, FilterChip } from '@/components/ui/FilterBar';
 import SearchInput from '@/components/ui/SearchInput';
@@ -212,7 +212,7 @@ function ApprovalsChart({ source, hoje }: { source: Orcamento[]; hoje: Date }) {
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Aprovações no período</p>
           <div className="flex items-baseline gap-2 mt-0.5">
             <span className="text-lg font-bold text-gray-900 tabular-nums leading-tight">
-              {isValor ? (totalValor > 0 ? formatCurrencyK(totalValor) : '—') : totalAprov}
+              {isValor ? (totalValor > 0 ? formatCurrency(totalValor) : '—') : totalAprov}
             </span>
             {!isValor && totalRejei > 0 && (
               <span className="text-[10px] font-medium text-red-500 tabular-nums">{totalRejei} rejeitado(s)</span>
@@ -377,7 +377,7 @@ function AprovacaoCard({ orc, canAct, prio, comissaoPct, hoje, checked, onCheck,
         <div className="flex flex-wrap items-center gap-2 mt-3">
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1 text-xs font-semibold tabular-nums text-emerald-700">
             <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
-            {valor > 0 ? formatCurrencyK(valor) : '—'}
+            {valor > 0 ? formatCurrency(valor) : '—'}
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1 text-xs font-semibold tabular-nums text-gray-700">
             <Package className="w-3.5 h-3.5 text-gray-400" />
@@ -386,7 +386,7 @@ function AprovacaoCard({ orc, canAct, prio, comissaoPct, hoje, checked, onCheck,
           {comissao !== null && (
             <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1 text-xs font-semibold tabular-nums text-amber-700" title={`Comissão prevista (${comissaoPct}%)`}>
               <Award className="w-3.5 h-3.5 text-amber-500" />
-              {formatCurrencyK(comissao)}
+              {formatCurrency(comissao)}
             </span>
           )}
           {pendente && (
@@ -473,8 +473,8 @@ function HistoricoCompras({ cnpj }: { cnpj: string }) {
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-2">
       <div><p className="text-[10px] text-gray-400">Pedidos</p><p className="text-xs font-bold text-gray-800 tabular-nums">{stats.n}</p></div>
-      <div><p className="text-[10px] text-gray-400">Volume total</p><p className="text-xs font-bold text-emerald-700 tabular-nums">{stats.total > 0 ? formatCurrencyK(stats.total) : '—'}</p></div>
-      <div><p className="text-[10px] text-gray-400">Média de pedido</p><p className="text-xs font-bold text-gray-800 tabular-nums">{stats.ticket > 0 ? formatCurrencyK(stats.ticket) : '—'}</p></div>
+      <div><p className="text-[10px] text-gray-400">Volume total</p><p className="text-xs font-bold text-emerald-700 tabular-nums">{stats.total > 0 ? formatCurrency(stats.total) : '—'}</p></div>
+      <div><p className="text-[10px] text-gray-400">Média de pedido</p><p className="text-xs font-bold text-gray-800 tabular-nums">{stats.ticket > 0 ? formatCurrency(stats.ticket) : '—'}</p></div>
       <div><p className="text-[10px] text-gray-400">Última compra</p><p className="text-xs font-bold text-gray-800 tabular-nums">{stats.ultimo ? formatDate(stats.ultimo) : '—'}</p></div>
     </div>
   );
@@ -571,7 +571,7 @@ function AprovacaoDrawer({ orc, canAct, prio, comissaoPct, cidadeUf, hoje, actin
             <div className="grid grid-cols-2 gap-2.5">
               <div className="rounded-xl bg-emerald-50/60 p-3">
                 <p className="text-[10px] text-gray-400">Valor total</p>
-                <p className="text-base font-bold text-emerald-700 tabular-nums">{valor > 0 ? formatCurrencyK(valor) : '—'}</p>
+                <p className="text-base font-bold text-emerald-700 tabular-nums">{valor > 0 ? formatCurrency(valor) : '—'}</p>
               </div>
               <div className="rounded-xl bg-gray-50 p-3">
                 <p className="text-[10px] text-gray-400">Itens</p>
@@ -579,7 +579,7 @@ function AprovacaoDrawer({ orc, canAct, prio, comissaoPct, cidadeUf, hoje, actin
               </div>
               <div className="rounded-xl bg-amber-50/60 p-3">
                 <p className="text-[10px] text-gray-400">Comissão prevista{comissaoPct !== undefined ? ` (${comissaoPct}%)` : ''}</p>
-                <p className="text-base font-bold text-amber-700 tabular-nums">{comissao !== null ? formatCurrencyK(comissao) : '—'}</p>
+                <p className="text-base font-bold text-amber-700 tabular-nums">{comissao !== null ? formatCurrency(comissao) : '—'}</p>
               </div>
               <div className="rounded-xl bg-gray-50 p-3">
                 <p className="text-[10px] text-gray-400">Aguardando há</p>
@@ -1022,8 +1022,8 @@ export default function AprovacoesPage() {
           <KpiCard icon={Hourglass}   label="Pendentes"        value={String(kpis.pendentes)} tone="text-amber-600" />
           <KpiCard icon={CheckCircle2} label="Aprovados hoje"  value={String(kpis.aprovadosHoje)} tone="text-emerald-700" />
           <KpiCard icon={XCircle}     label="Rejeitados"       value={String(counts.rejeitado)} tone="text-red-600" />
-          <KpiCard icon={DollarSign}  label="Valor aguardando" value={kpis.valorAguardando > 0 ? formatCurrencyK(kpis.valorAguardando) : '—'} tone="text-emerald-700" />
-          <KpiCard icon={TrendingUp}  label="Maior pendente"   value={kpis.maior > 0 ? formatCurrencyK(kpis.maior) : '—'} />
+          <KpiCard icon={DollarSign}  label="Valor aguardando" value={kpis.valorAguardando > 0 ? formatCurrency(kpis.valorAguardando) : '—'} tone="text-emerald-700" />
+          <KpiCard icon={TrendingUp}  label="Maior pendente"   value={kpis.maior > 0 ? formatCurrency(kpis.maior) : '—'} />
           <KpiCard icon={Timer}       label="Tempo médio"      value={kpis.tempoMedio !== null ? `${kpis.tempoMedio.toFixed(1).replace('.', ',')}d` : '—'} sub="da criação à aprovação" />
         </div>
 

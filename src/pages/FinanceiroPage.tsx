@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { formatDate, formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 import Select from '@/components/ui/Select';
 import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
@@ -9,7 +9,7 @@ import DataError from '@/components/ui/DataError';
 import TruncationNotice from '@/components/ui/TruncationNotice';
 import {
   FileText, Receipt, Download, Paperclip, X, Check, AlertTriangle, SlidersHorizontal,
-  List, LayoutGrid, Activity, ChevronRight, CheckCircle2, CircleDashed, Sparkles,
+  List, LayoutGrid, Activity, ChevronRight, CheckCircle2, CircleDashed,
   Truck, History, Share2, ExternalLink, ClipboardCheck, FolderOpen,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
@@ -131,7 +131,7 @@ function DocCard({ pedido, onOpen, index, conferido }: { pedido: PedidoFinanceir
             <p className="font-semibold text-gray-900 text-[15px] leading-snug line-clamp-2 group-hover:text-[hsl(142,93%,8%)] transition-colors">{nomeCliente(pedido)}</p>
             <p className="text-[11px] text-gray-400 mt-0.5 font-mono truncate">{pedido.cliente_cnpj}</p>
           </div>
-          {pedido.total_pedido_venda > 0 && <p className="font-bold text-base tabular-nums text-gray-900 flex-shrink-0">{formatCurrencyK(pedido.total_pedido_venda)}</p>}
+          {pedido.total_pedido_venda > 0 && <p className="font-bold text-base tabular-nums text-gray-900 flex-shrink-0">{formatCurrency(pedido.total_pedido_venda)}</p>}
         </div>
 
         {/* Integridade documental */}
@@ -378,7 +378,7 @@ function DocDrawer({ pedido, onClose, onToast, conferido, onConferir }: {
           {/* Resumo */}
           <div className="grid grid-cols-2 gap-2.5">
             <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Emissão</p><p className="text-sm font-bold text-gray-900 tabular-nums">{formatDate(pedido.data_emissao)}</p></div>
-            <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Valor</p><p className="text-sm font-bold text-gray-900 tabular-nums">{pedido.total_pedido_venda > 0 ? formatCurrencyK(pedido.total_pedido_venda) : '—'}</p></div>
+            <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Valor</p><p className="text-sm font-bold text-gray-900 tabular-nums">{pedido.total_pedido_venda > 0 ? formatCurrency(pedido.total_pedido_venda) : '—'}</p></div>
           </div>
           <div>
             <p className="text-[11px] text-gray-400 mb-1">Integridade documental</p>
@@ -470,7 +470,6 @@ function DocDrawer({ pedido, onClose, onToast, conferido, onConferir }: {
 export default function FinanceiroPage() {
   const hoje = useMemo(() => new Date(), []);
   const { data: pedidos = [], isLoading, isError, refetch } = useFinanceiro();
-  const reduce = useReducedMotion();
 
   const [view, setView] = useState<ViewMode>(() => {
     const s = localStorage.getItem('fin_view');
@@ -555,19 +554,6 @@ export default function FinanceiroPage() {
     }
     return { comAnexos: pedidos.filter(p => p.anexos.length > 0).length, nf, bol, completo, parcial, pendente, semDoc, faturadoIncompleto };
   }, [pedidos]);
-
-  const atencao = useMemo(() => {
-    const semBoleto = pedidos.filter(p => p.faturado && !temBoleto(p)).length;
-    const nfSemBoleto = pedidos.filter(p => temNF(p) && !temBoleto(p)).length;
-    const multiBol = pedidos.filter(p => boletos(p).length > 1).length;
-    const recent = pedidos.reduce((n, p) => n + p.anexos.filter(a => { const d = parseData(a.criado_em); return d && (hoje.getTime() - d.getTime()) <= 7 * DAY; }).length, 0);
-    const msgs: { texto: string; tone: 'red' | 'orange' | 'blue'; quick: QuickKey }[] = [];
-    if (semBoleto > 0) msgs.push({ texto: `${semBoleto} pedido(s) faturado(s) sem boleto anexado`, tone: 'red', quick: 'atencao' });
-    if (nfSemBoleto > 0) msgs.push({ texto: `${nfSemBoleto} pedido(s) com NF, mas ainda sem boleto`, tone: 'orange', quick: 'so_nf' });
-    if (multiBol > 0) msgs.push({ texto: `${multiBol} pedido(s) com múltiplos boletos`, tone: 'blue', quick: 'multi_boleto' });
-    if (recent > 0) msgs.push({ texto: `${recent} documento(s) anexado(s) nos últimos 7 dias`, tone: 'blue', quick: 'sete_dias' });
-    return msgs;
-  }, [pedidos, hoje]);
 
   const quickCounts = useMemo(() => ({
     completo: pedidos.filter(p => docStatus(p) === 'completo').length,
@@ -655,27 +641,6 @@ export default function FinanceiroPage() {
           <KpiCard icon={AlertTriangle} label="Pendentes" value={String(kpis.pendente)} tone={kpis.pendente > 0 ? 'text-red-600' : undefined} />
           <KpiCard icon={AlertTriangle} label="Faturado s/ docs" value={String(kpis.faturadoIncompleto)} tone={kpis.faturadoIncompleto > 0 ? 'text-red-600' : undefined} />
         </div>
-      )}
-
-      {/* Atenção necessária */}
-      {!isLoading && atencao.length > 0 && (
-        <motion.div initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50/70 to-white shadow-sm p-4">
-          <div className="flex items-center gap-2 mb-2.5">
-            <span className="w-7 h-7 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center"><Sparkles className="w-4 h-4" /></span>
-            <h2 className="text-sm font-semibold text-gray-900">Atenção necessária</h2>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-2">
-            {atencao.map((a, i) => (
-              <button key={i} type="button" onClick={() => setQuick(new Set([a.quick]))}
-                className="flex items-center gap-2.5 rounded-xl bg-white/70 p-2.5 text-left hover:bg-white transition-colors border border-transparent hover:border-gray-200">
-                <span className={cn('w-2 h-2 rounded-full flex-shrink-0', a.tone === 'red' ? 'bg-red-500' : a.tone === 'orange' ? 'bg-orange-500' : 'bg-blue-500')} />
-                <span className="text-xs text-gray-700 flex-1 min-w-0">{a.texto}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
-              </button>
-            ))}
-          </div>
-        </motion.div>
       )}
 
       {/* Toolbar */}

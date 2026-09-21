@@ -1,5 +1,5 @@
 import { Crown, TrendingDown, Zap, Moon, ArrowUpNarrowWide, ArrowDownNarrowWide } from 'lucide-react';
-import { formatCurrencyK, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 import { MOV_META } from '@/pages/ClientesPage';
 import { cn } from '@/utils/cn';
 import type { ClientStat } from '@/hooks/useGroupClientVisualAnalytics';
@@ -39,17 +39,17 @@ export default function GroupClientHighlights({ h, onOpen }: {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5">
       <Card eyebrow="Maior comprador" icon={Crown} tone="text-emerald-600" stat={h.maiorComprador} onOpen={onOpen}
-        valor={h.maiorComprador ? formatCurrencyK(h.maiorComprador.total) : '—'} contexto={h.maiorComprador ? `${h.maiorComprador.pct.toFixed(0)}% do grupo · ${ctxCidade(h.maiorComprador)}` : ''} />
+        valor={h.maiorComprador ? formatCurrency(h.maiorComprador.total) : '—'} contexto={h.maiorComprador ? `${h.maiorComprador.pct.toFixed(0)}% do grupo · ${ctxCidade(h.maiorComprador)}` : ''} />
       <Card eyebrow="Menor comprador" icon={TrendingDown} tone="text-slate-500" stat={h.menorComprador} onOpen={onOpen}
-        valor={h.menorComprador ? formatCurrencyK(h.menorComprador.total) : '—'} contexto={h.menorComprador ? `${h.menorComprador.pedidos} pedido(s) · ${ctxCidade(h.menorComprador)}` : ''} />
+        valor={h.menorComprador ? formatCurrency(h.menorComprador.total) : '—'} contexto={h.menorComprador ? `${h.menorComprador.pedidos} pedido(s) · ${ctxCidade(h.menorComprador)}` : ''} />
       <Card eyebrow="Mais ativo" icon={Zap} tone="text-emerald-600" stat={h.maisAtivo} onOpen={onOpen}
         valor={h.maisAtivo?.intervalo != null ? `a cada ${h.maisAtivo.intervalo} dias` : '—'} contexto={h.maisAtivo ? `${h.maisAtivo.pedidos} pedidos · ${ctxCidade(h.maisAtivo)}` : ''} />
       <Card eyebrow="Menos ativo" icon={Moon} tone="text-slate-500" stat={h.menosAtivo} onOpen={onOpen}
         valor={h.menosAtivo?.intervalo != null ? `a cada ${h.menosAtivo.intervalo} dias` : '—'} contexto={h.menosAtivo?.ultimo ? `última ${formatDate(h.menosAtivo.ultimo)}` : ctxCidade(h.menosAtivo)} />
       <Card eyebrow="Maior média/pedido" icon={ArrowUpNarrowWide} tone="text-blue-600" stat={h.maiorTicket} onOpen={onOpen}
-        valor={h.maiorTicket ? `${formatCurrencyK(h.maiorTicket.ticket)}/ped.` : '—'} contexto={h.maiorTicket ? `${h.maiorTicket.pedidos} pedidos · ${formatCurrencyK(h.maiorTicket.total)}` : ''} />
+        valor={h.maiorTicket ? `${formatCurrency(h.maiorTicket.ticket)}/ped.` : '—'} contexto={h.maiorTicket ? `${h.maiorTicket.pedidos} pedidos · ${formatCurrency(h.maiorTicket.total)}` : ''} />
       <Card eyebrow="Menor média/pedido" icon={ArrowDownNarrowWide} tone="text-slate-500" stat={h.menorTicket} onOpen={onOpen}
-        valor={h.menorTicket ? `${formatCurrencyK(h.menorTicket.ticket)}/ped.` : '—'} contexto={h.menorTicket ? `${h.menorTicket.pedidos} pedidos · ${formatCurrencyK(h.menorTicket.total)}` : ''} />
+        valor={h.menorTicket ? `${formatCurrency(h.menorTicket.ticket)}/ped.` : '—'} contexto={h.menorTicket ? `${h.menorTicket.pedidos} pedidos · ${formatCurrency(h.menorTicket.total)}` : ''} />
     </div>
   );
 }

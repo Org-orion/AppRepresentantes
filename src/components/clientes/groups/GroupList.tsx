@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Layers, Users, AlertTriangle } from 'lucide-react';
 import SearchInput from '@/components/ui/SearchInput';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/formatters';
 import type { ClientGroup, GroupStatus } from '@/hooks/useClientGroups';
 
 const STATUS_DOT: Record<GroupStatus, string> = {
@@ -10,10 +11,9 @@ const STATUS_DOT: Record<GroupStatus, string> = {
   critico: 'bg-red-500',
 };
 
+// Valor inteiro, sem abreviar.
 function fmtK(v: number): string {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1).replace('.', ',')}M`;
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1).replace('.', ',')}k`;
-  return `R$ ${v.toFixed(0)}`;
+  return formatCurrency(v);
 }
 
 export default function GroupList({ grupos, selected, onSelect, isLoading }: {

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import Select from '@/components/ui/Select';
 import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
@@ -13,7 +13,7 @@ import {
   CheckCircle2, Unlock, Map as MapIcon, Wrench, Handshake, Factory, FileCheck2, Truck,
   PackageCheck, X, Check, SlidersHorizontal, LayoutList, SquareKanban, Activity,
   Package, AlertTriangle, Clock, FileText, Receipt, Download, MapPin,
-  ChevronRight, Sparkles, History, ArrowRight, CalendarClock, Boxes,
+  ChevronRight, History, ArrowRight, CalendarClock, Boxes,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useAcompanhamento } from '@/hooks/useAcompanhamento';
@@ -177,7 +177,7 @@ function PedidoCard({ pedido, onOpen, index, hoje }: {
             <p className="font-semibold text-gray-900 text-[15px] leading-snug line-clamp-2 group-hover:text-[hsl(142,93%,8%)] transition-colors">{nomeCliente(pedido)}</p>
             <p className="text-[11px] text-gray-400 mt-0.5 font-mono truncate">{pedido.cliente_cnpj}</p>
           </div>
-          {temValor && <p className="font-bold text-base tabular-nums text-gray-900 flex-shrink-0">{formatCurrencyK(pedido.total_pedido_venda)}</p>}
+          {temValor && <p className="font-bold text-base tabular-nums text-gray-900 flex-shrink-0">{formatCurrency(pedido.total_pedido_venda)}</p>}
         </div>
 
         {/* Próxima etapa + tempo no status */}
@@ -255,7 +255,7 @@ function PipelineView({ pedidos, onOpen, hoje }: { pedidos: PedidoAcompanhamento
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: st.color }} />
                 <span className="text-xs font-semibold text-gray-700">{st.label}</span>
                 <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-200 rounded-full px-1.5 py-0.5 tabular-nums">{col.length}</span>
-                {valor > 0 && <span className="ml-auto text-[10px] text-gray-400 tabular-nums">{formatCurrencyK(valor)}</span>}
+                {valor > 0 && <span className="ml-auto text-[10px] text-gray-400 tabular-nums">{formatCurrency(valor)}</span>}
               </div>
               <div className="space-y-2 mt-1 max-h-[68vh] overflow-y-auto scrollbar-thin">
                 {col.length === 0 ? <p className="text-[11px] text-gray-300 text-center py-6">Vazio</p> : col.slice(0, 50).map((p, i) => (
@@ -269,7 +269,7 @@ function PipelineView({ pedidos, onOpen, hoje }: { pedidos: PedidoAcompanhamento
                     </div>
                     <p className="text-[13px] font-semibold text-gray-900 leading-snug line-clamp-2 mt-1">{nomeCliente(p)}</p>
                     <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs font-bold text-gray-900 tabular-nums">{p.total_pedido_venda > 0 ? formatCurrencyK(p.total_pedido_venda) : '—'}</span>
+                      <span className="text-xs font-bold text-gray-900 tabular-nums">{p.total_pedido_venda > 0 ? formatCurrency(p.total_pedido_venda) : '—'}</span>
                       {faturadoOuAlem(p) && <DocBadges pedido={p} />}
                     </div>
                   </motion.div>
@@ -405,7 +405,7 @@ function PedidoDrawer({ pedido, hoje, onClose }: { pedido: PedidoAcompanhamento;
           {/* Resumo */}
           <div className="grid grid-cols-2 gap-2.5">
             <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Emissão</p><p className="text-sm font-bold text-gray-900 tabular-nums">{fmtShort(pedido.data_emissao)}</p></div>
-            <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Valor</p><p className="text-sm font-bold text-gray-900 tabular-nums">{pedido.total_pedido_venda > 0 ? formatCurrencyK(pedido.total_pedido_venda) : '—'}</p></div>
+            <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Valor</p><p className="text-sm font-bold text-gray-900 tabular-nums">{pedido.total_pedido_venda > 0 ? formatCurrency(pedido.total_pedido_venda) : '—'}</p></div>
             <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Próxima etapa</p><p className="text-sm font-bold tabular-nums" style={{ color: prox ? STEP_META[prox.key].color : '#22c55e' }}>{prox?.label ?? 'Concluído'}</p></div>
             <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Tempo na etapa</p><p className="text-sm font-bold text-gray-900 tabular-nums">{diasNoStatus(pedido, hoje)} dia(s)</p></div>
           </div>
@@ -510,7 +510,6 @@ const PAGE = 24;
 // ─── Página ──────────────────────────────────────────────
 export default function AcompanhamentoPage() {
   const hoje = useMemo(() => new Date(), []);
-  const reduce = useReducedMotion();
   const { data: pedidosRaw = [], isLoading, isError, error, refetch } = useAcompanhamento();
 
   const [view, setView] = useState<ViewMode>(() => {
@@ -578,20 +577,6 @@ export default function AcompanhamentoPage() {
       docs: pedidos.filter(docsPendentes).length,
       atraso: pedidos.filter(p => emAtraso(p, hoje)).length,
     };
-  }, [pedidos, hoje]);
-
-  // Bloco "Atenção necessária"
-  const atencao = useMemo(() => {
-    const semNF = pedidos.filter(p => faturadoOuAlem(p) && !temNF(p)).length;
-    const semBoleto = pedidos.filter(p => faturadoOuAlem(p) && !temBoleto(p)).length;
-    const paradosN = pedidos.filter(p => parado(p, hoje)).length;
-    const entregaLonga = pedidos.filter(p => p.status === 'entrega' && diasNoStatus(p, hoje) > 10).length;
-    const msgs: { texto: string; tone: 'red' | 'orange'; quick: QuickKey }[] = [];
-    if (semNF > 0) msgs.push({ texto: `${semNF} pedido(s) faturado(s) sem NF anexada`, tone: 'red', quick: 'nf_pend' });
-    if (semBoleto > 0) msgs.push({ texto: `${semBoleto} pedido(s) faturado(s) sem boleto`, tone: 'red', quick: 'boleto_pend' });
-    if (paradosN > 0) msgs.push({ texto: `${paradosN} pedido(s) parado(s) há mais de 7 dias na mesma etapa`, tone: 'orange', quick: 'parado' });
-    if (entregaLonga > 0) msgs.push({ texto: `${entregaLonga} pedido(s) em entrega há mais tempo que o esperado`, tone: 'orange', quick: 'atrasado' });
-    return msgs;
   }, [pedidos, hoje]);
 
   const quickCounts = useMemo(() => ({
@@ -672,27 +657,6 @@ export default function AcompanhamentoPage() {
           <KpiCard icon={FileText} label="Docs pend." value={String(kpis.docs)} tone={kpis.docs > 0 ? 'text-red-600' : undefined} />
           <KpiCard icon={AlertTriangle} label="Atraso" value={String(kpis.atraso)} tone={kpis.atraso > 0 ? 'text-red-600' : undefined} />
         </div>
-      )}
-
-      {/* Atenção necessária */}
-      {!isLoading && atencao.length > 0 && (
-        <motion.div initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50/70 to-white shadow-sm p-4">
-          <div className="flex items-center gap-2 mb-2.5">
-            <span className="w-7 h-7 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center"><Sparkles className="w-4 h-4" /></span>
-            <h2 className="text-sm font-semibold text-gray-900">Atenção necessária</h2>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-2">
-            {atencao.map((a, i) => (
-              <button key={i} type="button" onClick={() => setQuick(new Set([a.quick]))}
-                className="flex items-center gap-2.5 rounded-xl bg-white/70 p-2.5 text-left hover:bg-white transition-colors border border-transparent hover:border-gray-200">
-                <span className={cn('w-2 h-2 rounded-full flex-shrink-0', a.tone === 'red' ? 'bg-red-500' : 'bg-orange-500')} />
-                <span className="text-xs text-gray-700 flex-1 min-w-0">{a.texto}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
-              </button>
-            ))}
-          </div>
-        </motion.div>
       )}
 
       {/* Toolbar */}

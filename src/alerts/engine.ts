@@ -9,7 +9,7 @@ import type { ClienteCarteira } from '@/services/carteira';
 import type { PedidoComAnexos } from '@/services/financeiro';
 import type { NotificacaoDB } from '@/services/notificacoes';
 import { ALERT_DEFS, type Alerta } from './registry';
-import { formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 
 const DAY = 86_400_000;
 
@@ -58,7 +58,7 @@ function alertasOrcamentos({ orcamentos, hoje }: EngineInput): Alerta[] {
         prioridade: ALERT_DEFS.orcamento_aprovado.prioridade,
         titulo: `Orçamento #${o.numero} aprovado`,
         descricao: nomeCliente(o.cliente_nome, o.cliente_fantasia),
-        detalhe: valor > 0 ? `Valor: ${formatCurrencyK(valor)}` : undefined,
+        detalhe: valor > 0 ? `Valor: ${formatCurrency(valor)}` : undefined,
         data: o.updated_at,
         rota: '/orcamentos?status=aprovado',
         acao: 'Abrir orçamento',

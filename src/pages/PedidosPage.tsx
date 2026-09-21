@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { formatCurrency, formatCurrencyK, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 import Select from '@/components/ui/Select';
 import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
@@ -151,7 +151,7 @@ function PedidoCard({ pedido, onOpen, index }: { pedido: PedidoVenda; onOpen: (p
             <p className="text-[11px] text-gray-400 mt-0.5 truncate">{pedido.representante ?? '—'}</p>
           </div>
           <p className={cn('font-bold text-base tabular-nums flex-shrink-0', temValor ? 'text-gray-900' : 'text-gray-300')}>
-            {temValor ? formatCurrencyK(pedido.total_pedido_venda) : '—'}
+            {temValor ? formatCurrency(pedido.total_pedido_venda) : '—'}
           </p>
         </div>
 
@@ -159,7 +159,7 @@ function PedidoCard({ pedido, onOpen, index }: { pedido: PedidoVenda; onOpen: (p
         <div className="flex flex-wrap items-center gap-2 mt-3">
           <span className="inline-flex items-center gap-1 text-[11px] text-gray-500"><Package className="w-3 h-3 text-gray-400" />{itens} item(s)</span>
           <span className="inline-flex items-center gap-1 text-[11px] text-gray-500"><Boxes className="w-3 h-3 text-gray-400" />{pedido.total_qtd} un.</span>
-          {pedido.frete > 0 && <span className="inline-flex items-center gap-1 text-[11px] text-gray-500"><Truck className="w-3 h-3 text-gray-400" />{formatCurrencyK(pedido.frete)}</span>}
+          {pedido.frete > 0 && <span className="inline-flex items-center gap-1 text-[11px] text-gray-500"><Truck className="w-3 h-3 text-gray-400" />{formatCurrency(pedido.frete)}</span>}
           {(pedido.cliente_cidade) && <span className="inline-flex items-center gap-1 text-[11px] text-gray-400"><MapPin className="w-3 h-3" />{pedido.cliente_cidade}/{pedido.cliente_uf}</span>}
         </div>
 
@@ -239,7 +239,7 @@ function TableView({ pedidos, onOpen }: { pedidos: PedidoVenda[]; onOpen: (p: Pe
                 <td className="px-4 py-3"><p className="font-medium text-gray-900 truncate max-w-[200px]">{nomeCliente(p)}</p></td>
                 <td className="px-4 py-3 text-xs text-gray-500 truncate max-w-[150px]">{p.representante ?? '—'}</td>
                 <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{p.cliente_cidade ? `${p.cliente_cidade}/${p.cliente_uf}` : '—'}</td>
-                <td className="px-4 py-3 text-right tabular-nums font-semibold text-gray-900">{p.total_pedido_venda > 0 ? formatCurrencyK(p.total_pedido_venda) : <span className="text-gray-300 font-normal">—</span>}</td>
+                <td className="px-4 py-3 text-right tabular-nums font-semibold text-gray-900">{p.total_pedido_venda > 0 ? formatCurrency(p.total_pedido_venda) : <span className="text-gray-300 font-normal">—</span>}</td>
                 <td className="px-4 py-3 text-center tabular-nums text-gray-600">{numItens(p)}</td>
                 <td className="px-4 py-3"><EtapaPill etapa={etapaDe(p)} /></td>
                 <td className="px-4 py-3">{faturadoOuAlem(p) ? <DocBadges pedido={p} /> : <span className="text-gray-300 text-xs">—</span>}</td>
@@ -268,7 +268,7 @@ function PipelineView({ pedidos, onOpen }: { pedidos: PedidoVenda[]; onOpen: (p:
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: et.color }} />
                 <span className="text-xs font-semibold text-gray-700">{et.label}</span>
                 <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-200 rounded-full px-1.5 py-0.5 tabular-nums">{col.length}</span>
-                {valor > 0 && <span className="ml-auto text-[10px] text-gray-400 tabular-nums">{formatCurrencyK(valor)}</span>}
+                {valor > 0 && <span className="ml-auto text-[10px] text-gray-400 tabular-nums">{formatCurrency(valor)}</span>}
               </div>
               <div className="space-y-2 mt-1 max-h-[70vh] overflow-y-auto scrollbar-thin">
                 {col.length === 0 ? (
@@ -288,7 +288,7 @@ function PipelineView({ pedidos, onOpen }: { pedidos: PedidoVenda[]; onOpen: (p:
                     </div>
                     <p className="text-[13px] font-semibold text-gray-900 leading-snug line-clamp-2 mt-1">{nomeCliente(p)}</p>
                     <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs font-bold text-gray-900 tabular-nums">{p.total_pedido_venda > 0 ? formatCurrencyK(p.total_pedido_venda) : '—'}</span>
+                      <span className="text-xs font-bold text-gray-900 tabular-nums">{p.total_pedido_venda > 0 ? formatCurrency(p.total_pedido_venda) : '—'}</span>
                       {faturadoOuAlem(p) && <DocBadges pedido={p} />}
                     </div>
                   </motion.div>
@@ -364,7 +364,7 @@ function PedidoDrawer({ pedido, onClose }: { pedido: PedidoVenda; onClose: () =>
         <div className="flex-1 overflow-y-auto scrollbar-thin p-5 space-y-6">
           {/* Resumo executivo */}
           <div className="grid grid-cols-2 gap-2.5">
-            <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Valor total</p><p className="text-base font-bold text-gray-900 tabular-nums">{pedido.total_pedido_venda > 0 ? formatCurrencyK(pedido.total_pedido_venda) : '—'}</p></div>
+            <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Valor total</p><p className="text-base font-bold text-gray-900 tabular-nums">{pedido.total_pedido_venda > 0 ? formatCurrency(pedido.total_pedido_venda) : '—'}</p></div>
             <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] text-gray-400">Itens · Unidades</p><p className="text-base font-bold text-gray-900 tabular-nums">{itens.length} · {pedido.total_qtd}</p></div>
           </div>
 
@@ -702,11 +702,11 @@ export default function PedidosPage() {
       ) : (
         <div className="flex sm:grid sm:grid-cols-4 xl:grid-cols-8 gap-2.5 overflow-x-auto scrollbar-thin -mx-1 px-1 sm:mx-0 sm:px-0 sm:overflow-visible">
           <KpiCard icon={ShoppingCart} label="Pedidos" value={kpis.total.toLocaleString('pt-BR')} />
-          <KpiCard icon={DollarSign} label="Valor total" value={kpis.valorTotal > 0 ? formatCurrencyK(kpis.valorTotal) : '—'} tone="text-emerald-700" />
+          <KpiCard icon={DollarSign} label="Valor total" value={kpis.valorTotal > 0 ? formatCurrency(kpis.valorTotal) : '—'} tone="text-emerald-700" />
           <KpiCard icon={FileCheck2} label="Faturados" value={String(kpis.faturados)} tone="text-teal-700" />
           <KpiCard icon={Truck} label="Em entrega" value={String(kpis.emEntrega)} tone="text-sky-700" />
           <KpiCard icon={PackageCheck} label="Entregues" value={String(kpis.entregues)} tone="text-emerald-700" />
-          <KpiCard icon={TrendingUp} label="Média de pedido" value={kpis.ticket > 0 ? formatCurrencyK(kpis.ticket) : '—'} tone="text-blue-700" />
+          <KpiCard icon={TrendingUp} label="Média de pedido" value={kpis.ticket > 0 ? formatCurrency(kpis.ticket) : '—'} tone="text-blue-700" />
           <KpiCard icon={AlertTriangle} label="Docs pendentes" value={String(kpis.docsPend)} tone={kpis.docsPend > 0 ? 'text-amber-600' : undefined} />
           <KpiCard icon={Clock} label="Atenção / atraso" value={String(kpis.atencao)} tone={kpis.atencao > 0 ? 'text-red-600' : undefined} />
         </div>

@@ -7,6 +7,7 @@ import PageContainer from '@/components/ui/PageContainer';
 import DataError from '@/components/ui/DataError';
 import TruncationNotice from '@/components/ui/TruncationNotice';
 import { cn } from '@/utils/cn';
+import { clienteCasaBusca } from '@/utils/buscaCliente';
 import { MetricCard } from '@/components/ui/cards';
 import { useSearchParams } from 'react-router-dom';
 import { useCarteira, useClientePedidos } from '@/hooks/useCarteira';
@@ -15,7 +16,7 @@ import type { ClienteCarteira, ClientePedido } from '@/services/carteira';
 import ClienteViewToggle, { type ClienteView } from '@/components/clientes/ClienteViewToggle';
 import ClientGroupsView from '@/components/clientes/groups/ClientGroupsView';
 import {
-  AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ComposedChart, Bar, Line, ReferenceLine,
 } from 'recharts';
 import {
@@ -30,10 +31,9 @@ const CONCREM = 'hsl(142,93%,8%)';
 const PIE_COLORS = ['#014017', '#1a7a40', '#2eaf69', '#6dcf99', '#0ea5e9', '#8b5cf6', '#f59e0b', '#cbd5e1'];
 const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
+// Valor inteiro, sem abreviar.
 function fmtCompact(value: number): string {
-  if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toFixed(1).replace('.', ',')}M`;
-  if (value >= 1_000)     return `R$ ${(value / 1_000).toFixed(1).replace('.', ',')}k`;
-  return `R$ ${value.toFixed(0)}`;
+  return formatCurrency(value);
 }
 function fmtVolume(value: number): string {
   return value > 0 ? fmtCompact(value) : '—';
@@ -608,69 +608,12 @@ export function ClienteIntel({ cliente, onBack }: { cliente: ClienteCarteira; on
             </PanelCard>
           )}
 
-          {/* ── Evolução de compras + Mix de produtos ── */}
-          <div className="grid xl:grid-cols-3 gap-3">
-            <div className="xl:col-span-2 min-w-0">
-              <PanelCard title="Evolução de Compras" badge="12 meses">
-                {a.serieMensal.every(m => m.valor === 0) ? (
-                  <p className="text-sm text-gray-400 py-10 text-center">Sem valores registrados no período</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={190}>
-                    <AreaChart data={a.serieMensal} margin={{ top: 6, right: 6, bottom: 0, left: -16 }}>
-                      <defs>
-                        <linearGradient id="areaCliente" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={CONCREM} stopOpacity={0.3} />
-                          <stop offset="100%" stopColor={CONCREM} stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                      <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                      <YAxis tickFormatter={v => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                      <Tooltip formatter={(v) => [formatCurrency(Number(v)), 'Compras']}
-                        contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #e5e7eb' }} />
-                      <Area type="monotone" dataKey="valor" stroke={CONCREM} strokeWidth={2.5} fill="url(#areaCliente)" dot={{ r: 2.5, fill: CONCREM }} activeDot={{ r: 4.5 }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                )}
-              </PanelCard>
-            </div>
-
-            <PanelCard title="Mix de Produtos" icon={DollarSign} badge="por valor" badgeTone="text-blue-700 bg-blue-50" subtitle="Baseado no valor total comprado (R$)">
-              {a.mixProdutos.length === 0 ? (
-                <p className="text-sm text-gray-400 py-10 text-center">Sem histórico suficiente para calcular o mix por valor.</p>
-              ) : (() => {
-                const mixTotal = a.mixProdutos.reduce((s, d) => s + d.value, 0) || 1;
-                return (
-                <>
-                  <ResponsiveContainer width="100%" height={140}>
-                    <PieChart>
-                      <Pie data={a.mixProdutos} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={62} paddingAngle={2} stroke="none">
-                        {a.mixProdutos.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip formatter={(v, n) => [`${formatCurrency(Number(v))} · ${Math.round(Number(v) / mixTotal * 100)}% do faturamento`, n as string]}
-                        contentStyle={{ fontSize: 11, borderRadius: 10, border: '1px solid #e5e7eb', maxWidth: 260 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="space-y-1 mt-1">
-                    {a.mixProdutos.slice(0, 4).map((d, i) => (
-                      <div key={d.name} className="flex items-center gap-1.5 text-[11px] text-gray-500 min-w-0">
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                        <span className="truncate flex-1">{d.name}</span>
-                        <span className="font-semibold text-gray-700 tabular-nums flex-shrink-0">{fmtCompact(d.value)}</span>
-                        <span className="text-gray-400 tabular-nums flex-shrink-0 w-9 text-right">{Math.round(d.value / mixTotal * 100)}%</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-gray-400 mt-2.5 pt-2 border-t border-gray-100 leading-snug">
-                    Calculado pelo <span className="font-medium text-gray-500">valor total comprado</span> em cada produto — participação no faturamento do cliente.
-                  </p>
-                </>
-                );
-              })()}
-            </PanelCard>
+          {/* ── Frequência de compra ── */}
+          <div>
+            <FrequenciaCompra stats={a.freqStats} reduce={!!reduce} />
           </div>
 
-          {/* ── Produto destaque + Frequência de compra ── */}
+          {/* ── Produto destaque + Mix de produtos ── */}
           <div className="grid xl:grid-cols-3 gap-3">
             <PanelCard title="Produto Mais Comprado" icon={Package} badge="por quantidade" badgeTone="text-emerald-700 bg-emerald-50" subtitle="Baseado na quantidade total de unidades compradas">
               {a.topProduto ? (
@@ -699,7 +642,48 @@ export function ClienteIntel({ cliente, onBack }: { cliente: ClienteCarteira; on
             </PanelCard>
 
             <div className="xl:col-span-2 min-w-0">
-              <FrequenciaCompra stats={a.freqStats} reduce={!!reduce} />
+              <PanelCard title="Mix de Produtos" icon={DollarSign} badge="por valor" badgeTone="text-blue-700 bg-blue-50" subtitle="Baseado no valor total comprado (R$)">
+                {a.mixProdutos.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-10 text-center">Sem histórico suficiente para calcular o mix por valor.</p>
+                ) : (() => {
+                  const mixTotal = a.mixProdutos.reduce((s, d) => s + d.value, 0) || 1;
+                  return (
+                  <>
+                    {/* Donut à esquerda, lista à direita: o card fica preenchido
+                        e mais baixo. Em telas estreitas volta a empilhar. */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="w-full sm:w-[150px] sm:flex-shrink-0">
+                        <ResponsiveContainer width="100%" height={140}>
+                          <PieChart>
+                            {/* Sem <Tooltip>: com o donut em 150px o balão do Recharts
+                                vaza por cima da lista ao lado e um texto cobre o outro.
+                                A lista já identifica TODAS as fatias, e o valor exato
+                                fica no title (tooltip nativo do navegador). */}
+                            <Pie data={a.mixProdutos} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={62} paddingAngle={2} stroke="none">
+                              {a.mixProdutos.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="space-y-1 flex-1 min-w-0">
+                        {a.mixProdutos.map((d, i) => (
+                          <div key={d.name} className="flex items-center gap-1.5 text-[11px] text-gray-500 min-w-0"
+                            title={`${d.name} — ${formatCurrency(d.value)} · ${Math.round(d.value / mixTotal * 100)}% do faturamento`}>
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                            <span className="truncate flex-1">{d.name}</span>
+                            <span className="font-semibold text-gray-700 tabular-nums flex-shrink-0">{fmtCompact(d.value)}</span>
+                            <span className="text-gray-400 tabular-nums flex-shrink-0 w-9 text-right">{Math.round(d.value / mixTotal * 100)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-2.5 pt-2 border-t border-gray-100 leading-snug">
+                      Calculado pelo <span className="font-medium text-gray-500">valor total comprado</span> em cada produto — participação no faturamento do cliente.
+                    </p>
+                  </>
+                  );
+                })()}
+              </PanelCard>
             </div>
           </div>
 
@@ -815,14 +799,7 @@ export default function ClientesPage() {
 
   const filtered = useMemo(() => {
     let list = [...clientes];
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(c =>
-        (c.cliente_nome ?? '').toLowerCase().includes(q) ||
-        (c.cliente_fantasia ?? '').toLowerCase().includes(q) ||
-        (c.cliente_cnpj ?? '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
-      );
-    }
+    if (search.trim()) list = list.filter(c => clienteCasaBusca(c, search));
     if (ufFilter) list = list.filter(c => c.cliente_uf === ufFilter);
     if (sort === 'pedidos') list.sort((a, b) => b.total_pedidos - a.total_pedidos);
     else if (sort === 'volume') list.sort((a, b) => b.total_comprado - a.total_comprado);

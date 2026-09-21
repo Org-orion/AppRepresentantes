@@ -1,7 +1,7 @@
 import { Layers, ShoppingCart, Users, DollarSign, AlertTriangle, Briefcase } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { useGroupPerformance } from '@/hooks/useRepPerformance';
-import { formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import type { DashboardFiltros } from '@/services/dashboard';
 
 // Performance por grupo de cliente (escopo do usuário): receita + participação,
@@ -29,7 +29,7 @@ export default function GroupPerformancePanel({ period }: { period?: DashboardFi
               <div key={g.grupo} className="rounded-2xl border border-gray-200/70 p-3 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-gray-900 truncate">{g.grupo}</p>
-                  <p className="text-sm font-bold text-emerald-700 tabular-nums flex-shrink-0">{formatCurrencyK(g.receita)}</p>
+                  <p className="text-sm font-bold text-emerald-700 tabular-nums flex-shrink-0">{formatCurrency(g.receita)}</p>
                 </div>
                 {/* barra de participação na receita */}
                 <div className="flex items-center gap-2 mt-1.5">
@@ -42,7 +42,7 @@ export default function GroupPerformancePanel({ period }: { period?: DashboardFi
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-gray-500">
                   <span className="inline-flex items-center gap-1"><ShoppingCart className="w-3 h-3 text-gray-400" />{g.pedidos} pedido(s)</span>
                   <span className="inline-flex items-center gap-1"><Users className="w-3 h-3 text-gray-400" />{g.clientes} cliente(s)</span>
-                  <span className="inline-flex items-center gap-1"><DollarSign className="w-3 h-3 text-gray-400" />{formatCurrencyK(g.ticketMedio)} / pedido</span>
+                  <span className="inline-flex items-center gap-1"><DollarSign className="w-3 h-3 text-gray-400" />{formatCurrency(g.ticketMedio)} / pedido</span>
                   <span className="inline-flex items-center gap-1"><Briefcase className="w-3 h-3 text-gray-400" />{g.representantes} rep.</span>
                   {(g.clientesAtrasados + g.clientesDormentes) > 0 && (
                     <span className="inline-flex items-center gap-1 text-red-500 font-medium" title={`${g.clientesAtrasados} atrasado(s) 31–60d · ${g.clientesDormentes} dormente(s) +60d`}><AlertTriangle className="w-3 h-3" />{g.clientesAtrasados + g.clientesDormentes} clientes sem comprar +30d</span>

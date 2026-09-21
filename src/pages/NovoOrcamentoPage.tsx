@@ -12,12 +12,13 @@ import DatePicker from '@/components/ui/DatePicker';
 import PageContainer from '@/components/ui/PageContainer';
 import StickyActionBar from '@/components/ui/StickyActionBar';
 import { cn } from '@/utils/cn';
+import { clienteCasaBusca } from '@/utils/buscaCliente';
 import { useAuth } from '@/hooks/useAuth';
 import { useCarteira, useClientePedidos } from '@/hooks/useCarteira';
 import { useProdutos } from '@/hooks/useProdutos';
 import { parseDadosTabela } from '@/services/pedidosVenda';
 import { createOrcamento, enviarOrcamento, type CreateItemPayload } from '@/services/orcamentos';
-import { formatDate, formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 import type { Produto } from '@/types';
 import type { ClienteCarteira, ClientePedido } from '@/services/carteira';
 
@@ -200,15 +201,8 @@ function ClienteSelector({ clientes, selected, onSelect }: {
   const [q, setQ] = useState('');
 
   const filtered = useMemo(() => {
-    if (!q) return clientes.slice(0, 40);
-    const ql = q.toLowerCase();
-    return clientes
-      .filter(c =>
-        (c.cliente_nome ?? '').toLowerCase().includes(ql) ||
-        (c.cliente_fantasia ?? '').toLowerCase().includes(ql) ||
-        (c.cliente_cnpj ?? '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
-      )
-      .slice(0, 40);
+    if (!q.trim()) return clientes.slice(0, 40);
+    return clientes.filter(c => clienteCasaBusca(c, q)).slice(0, 40);
   }, [clientes, q]);
 
   if (selected) {
@@ -342,8 +336,8 @@ function ClienteInsights({ cnpj }: { cnpj: string }) {
   const stats = [
     { label: 'Última compra',  value: ins.ultimo ? formatDate(ins.ultimo) : '—' },
     { label: 'Frequência',     value: ins.ciclo ? `~${ins.ciclo} dias` : '—' },
-    { label: 'Média de pedido', value: ins.ticket > 0 ? formatCurrencyK(ins.ticket) : '—' },
-    { label: 'Histórico',      value: `${ins.n} pedido(s)${ins.total > 0 ? ` · ${formatCurrencyK(ins.total)}` : ''}` },
+    { label: 'Média de pedido', value: ins.ticket > 0 ? formatCurrency(ins.ticket) : '—' },
+    { label: 'Histórico',      value: `${ins.n} pedido(s)${ins.total > 0 ? ` · ${formatCurrency(ins.total)}` : ''}` },
   ];
 
   return (

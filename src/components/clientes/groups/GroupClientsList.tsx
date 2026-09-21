@@ -3,15 +3,16 @@ import { Users, ChevronRight } from 'lucide-react';
 import SearchInput from '@/components/ui/SearchInput';
 import Select from '@/components/ui/Select';
 import { cn } from '@/utils/cn';
-import { formatDate } from '@/utils/formatters';
+import { clienteCasaBusca } from '@/utils/buscaCliente';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 import { movimentacaoCliente, MOV_META, type Movimentacao } from '@/pages/ClientesPage';
 import type { ClienteCarteira } from '@/services/carteira';
 
 const DAY = 24 * 60 * 60 * 1000;
+// Valor inteiro, sem abreviar. O travessão para zero é intencional aqui:
+// nesta lista R$ 0,00 é ruído, não informação.
 function fmtK(v: number): string {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1).replace('.', ',')}M`;
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1).replace('.', ',')}k`;
-  return v > 0 ? `R$ ${v.toFixed(0)}` : '—';
+  return v > 0 ? formatCurrency(v) : '—';
 }
 function diasDesde(iso: string | null, today: Date): number {
   if (!iso) return 999999;
@@ -49,10 +50,7 @@ export default function GroupClientsList({ clientes, today, onOpenCliente }: {
 
   const lista = useMemo(() => {
     let l = clientes.map(c => ({ c, mov: movimentacaoCliente(c, today), ticket: c.total_pedidos > 0 ? c.total_comprado / c.total_pedidos : 0 }));
-    if (busca) {
-      const q = busca.toLowerCase(), qn = q.replace(/\D/g, '');
-      l = l.filter(x => (x.c.cliente_nome ?? '').toLowerCase().includes(q) || (x.c.cliente_fantasia ?? '').toLowerCase().includes(q) || (x.c.cliente_cnpj ?? '').replace(/\D/g, '').includes(qn));
-    }
+    if (busca.trim()) l = l.filter(x => clienteCasaBusca(x.c, busca));
     if (uf) l = l.filter(x => x.c.cliente_uf === uf);
     if (mov) l = l.filter(x => x.mov === mov);
     l.sort((a, b) => {

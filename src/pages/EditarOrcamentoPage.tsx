@@ -8,6 +8,7 @@ import DatePicker from '@/components/ui/DatePicker';
 import PageContainer from '@/components/ui/PageContainer';
 import StickyActionBar from '@/components/ui/StickyActionBar';
 import { cn } from '@/utils/cn';
+import { clienteCasaBusca } from '@/utils/buscaCliente';
 import { useCarteira } from '@/hooks/useCarteira';
 import { useProdutos } from '@/hooks/useProdutos';
 import { fetchOrcamentoById, updateOrcamento, type CreateItemPayload } from '@/services/orcamentos';
@@ -91,13 +92,8 @@ function ClienteSelector({ clientes, selected, onSelect }: {
   const [q, setQ]       = useState('');
 
   const filtered = useMemo(() => {
-    if (!q) return clientes.slice(0, 40);
-    const ql = q.toLowerCase();
-    return clientes.filter(c =>
-      c.cliente_nome.toLowerCase().includes(ql) ||
-      (c.cliente_fantasia ?? '').toLowerCase().includes(ql) ||
-      c.cliente_cnpj.replace(/\D/g,'').includes(q.replace(/\D/g,''))
-    ).slice(0, 40);
+    if (!q.trim()) return clientes.slice(0, 40);
+    return clientes.filter(c => clienteCasaBusca(c, q)).slice(0, 40);
   }, [clientes, q]);
 
   if (selected) {

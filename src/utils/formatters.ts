@@ -24,7 +24,16 @@ export function parseContatos(raw: string | null | undefined): string[] {
   return raw.split(/[;,]/).map(s => s.trim()).filter(Boolean);
 }
 
-export const formatCurrencyK = (value: number) => {
+/**
+ * Valor abreviado (R$ 24,3M / R$ 40,2k) — use SOMENTE em eixo de gráfico.
+ *
+ * Substituiu `formatCurrencyK`, que abreviava em toda a interface: cards, KPIs,
+ * listas e tabelas passaram a mostrar o valor inteiro, porque "R$ 24,3M" esconde
+ * justamente o número que a pessoa foi conferir. No eixo de um gráfico a
+ * abreviação continua sendo a escolha certa — a faixa reservada tem algo como
+ * 30 a 55px de largura, e um rótulo completo ali se sobrepõe ao vizinho.
+ */
+export const formatCurrencyEixo = (value: number) => {
   const abs = Math.abs(value);
   if (abs >= 1_000_000) return `R$ ${(value / 1_000_000).toFixed(1).replace('.', ',')}M`;
   if (abs >= 1000)      return `R$ ${(value / 1000).toFixed(1).replace('.', ',')}k`;

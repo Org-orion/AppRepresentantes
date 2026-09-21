@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { BarChart3, Crown, TrendingDown, Zap, Moon, ArrowUpNarrowWide, ArrowDownNarrowWide } from 'lucide-react';
-import { formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import { useGroupClientVisualAnalytics, type ClientStat } from '@/hooks/useGroupClientVisualAnalytics';
 import type { ClienteCarteira } from '@/services/carteira';
 import GroupClientHighlights from './GroupClientHighlights';
@@ -24,12 +24,12 @@ export default function GroupClientVisualAnalytics({ clientes, receitaGrupo, tod
   const open = onOpenCliente ? (s: ClientStat) => onOpenCliente(s.c) : undefined;
 
   const rows = useMemo(() => ({
-    top: a.topBuyers.map<RankRow>(s => ({ stat: s, bar: s.total, valueText: formatCurrencyK(s.total) })),
-    low: a.lowestBuyers.map<RankRow>(s => ({ stat: s, bar: s.total, valueText: formatCurrencyK(s.total) })),
+    top: a.topBuyers.map<RankRow>(s => ({ stat: s, bar: s.total, valueText: formatCurrency(s.total) })),
+    low: a.lowestBuyers.map<RankRow>(s => ({ stat: s, bar: s.total, valueText: formatCurrency(s.total) })),
     ativo: a.mostActive.map<RankRow>(s => ({ stat: s, bar: 1 / (s.intervalo || 1), valueText: `${s.intervalo}d` })),
     inativo: a.leastActive.map<RankRow>(s => ({ stat: s, bar: s.intervalo || 0, valueText: `${s.intervalo}d` })),
-    tkHigh: a.highestTicket.map<RankRow>(s => ({ stat: s, bar: s.ticket, valueText: `${formatCurrencyK(s.ticket)}/ped.` })),
-    tkLow: a.lowestTicket.map<RankRow>(s => ({ stat: s, bar: s.ticket, valueText: `${formatCurrencyK(s.ticket)}/ped.` })),
+    tkHigh: a.highestTicket.map<RankRow>(s => ({ stat: s, bar: s.ticket, valueText: `${formatCurrency(s.ticket)}/ped.` })),
+    tkLow: a.lowestTicket.map<RankRow>(s => ({ stat: s, bar: s.ticket, valueText: `${formatCurrency(s.ticket)}/ped.` })),
   }), [a]);
 
   if (clientes.length === 0) return null;

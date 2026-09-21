@@ -7,8 +7,9 @@ import StrategicActionsPanel from '@/components/dashboard/executive/StrategicAct
 import PanoramaGlobal from '@/components/dashboard/PanoramaGlobal';
 import { useDashboardStats } from '@/hooks/useDashboardStats';
 import { useExecutiveSummary, type ExecutivePeriod } from '@/hooks/useExecutiveSummary';
-import { formatCurrency, formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import { Delta } from '@/components/dashboard/executive/kit';
+import ValorAjustavel from '@/components/ui/ValorAjustavel';
 
 function ReceitaTrendCard({ period }: { period: ExecutivePeriod }) {
   const { data: stats } = useDashboardStats(period);
@@ -26,7 +27,7 @@ function ReceitaTrendCard({ period }: { period: ExecutivePeriod }) {
       <CardContent>
         <div className="flex items-end justify-between gap-2 mb-1">
           <div>
-            <p className="text-2xl font-bold text-gray-900 tabular-nums leading-none">{formatCurrencyK(d.receita)}</p>
+            <ValorAjustavel valor={formatCurrency(d.receita)} className="font-bold text-gray-900" max="1.5rem" />
             <p className="text-[11px] text-gray-400 mt-1">valor do período</p>
           </div>
           <Delta value={d.receitaDelta} />
@@ -51,7 +52,7 @@ function ReceitaTrendCard({ period }: { period: ExecutivePeriod }) {
                   dataKey="valor"
                   position="top"
                   offset={8}
-                  formatter={(v: unknown) => formatCurrencyK(typeof v === 'number' ? v : Number(v) || 0)}
+                  formatter={(v: unknown) => formatCurrency(typeof v === 'number' ? v : Number(v) || 0)}
                   style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }}
                 />
               </Area>

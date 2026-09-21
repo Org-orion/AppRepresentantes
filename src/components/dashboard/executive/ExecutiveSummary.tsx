@@ -1,8 +1,9 @@
 import { DollarSign, ShoppingCart, Receipt, Target, UserCheck, AlertTriangle, Clock, FileWarning } from 'lucide-react';
-import { formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import { useExecutiveSummary, type ExecutivePeriod } from '@/hooks/useExecutiveSummary';
 import { StatusPill, Delta, type ExecStatus } from './kit';
 import { cn } from '@/utils/cn';
+import ValorAjustavel from '@/components/ui/ValorAjustavel';
 
 interface KpiDef {
   icon: React.ElementType;
@@ -23,7 +24,7 @@ function KpiCard({ k }: { k: KpiDef }) {
         <StatusPill status={k.status} />
       </div>
       <p className="text-[11px] text-gray-400 mt-2.5 truncate">{k.label}</p>
-      <p className="text-xl font-bold text-gray-900 tabular-nums truncate">{k.value}</p>
+      <ValorAjustavel valor={k.value} className="font-bold text-gray-900" max="1.25rem" />
       <div className="flex items-center gap-2 mt-1 min-w-0">
         {k.delta !== undefined && <Delta value={k.delta} positivoBom={k.deltaPositivoBom} />}
         <span className="text-[10px] text-gray-400 truncate">{k.desc}</span>
@@ -42,9 +43,9 @@ export default function ExecutiveSummary({ period }: { period: ExecutivePeriod }
   const docStatus: ExecStatus = d.docs === 0 ? 'bom' : d.docs > 20 ? 'critico' : 'atencao';
 
   const kpis: KpiDef[] = [
-    { icon: DollarSign, label: 'Valor do período', value: d.isLoading ? '…' : formatCurrencyK(d.receita), desc: 'vs período anterior', status: (d.receitaDelta ?? 0) >= 0 ? 'bom' : 'atencao', delta: d.receitaDelta, deltaPositivoBom: true },
+    { icon: DollarSign, label: 'Valor do período', value: d.isLoading ? '…' : formatCurrency(d.receita), desc: 'vs período anterior', status: (d.receitaDelta ?? 0) >= 0 ? 'bom' : 'atencao', delta: d.receitaDelta, deltaPositivoBom: true },
     { icon: ShoppingCart, label: 'Pedidos no período', value: d.isLoading ? '…' : d.pedidos.toLocaleString('pt-BR'), desc: 'emitidos', status: 'info' },
-    { icon: Receipt, label: 'Média de pedido', value: d.isLoading ? '…' : formatCurrencyK(d.ticket), desc: 'por pedido', status: 'info' },
+    { icon: Receipt, label: 'Média de pedido', value: d.isLoading ? '…' : formatCurrency(d.ticket), desc: 'por pedido', status: 'info' },
     { icon: Target, label: 'Conversão de orçamentos', value: d.isLoading ? '…' : `${d.conversao.toFixed(0)}%`, desc: `${d.orcAprovados}/${d.orcCriados} aprovados`, status: convStatus },
     { icon: UserCheck, label: 'Clientes ativos', value: d.isLoading ? '…' : d.ativos.toLocaleString('pt-BR'), desc: `de ${d.clientesTotal} na carteira`, status: 'bom' },
     { icon: AlertTriangle, label: 'Clientes em risco', value: d.isLoading ? '…' : d.clientesRisco.toLocaleString('pt-BR'), desc: `${d.dormentes} dormente(s)`, status: riscoStatus },

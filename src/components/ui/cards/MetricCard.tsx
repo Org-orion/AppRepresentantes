@@ -1,5 +1,6 @@
 import { type ElementType } from 'react';
 import { cn } from '@/utils/cn';
+import ValorAjustavel from '@/components/ui/ValorAjustavel';
 
 // KPI/Métrica padrão do sistema — extraído do topo da Central de Pedidos.
 // ícone + label pequeno + valor grande + subtítulo opcional. Tom semântico no valor.
@@ -29,7 +30,11 @@ export default function MetricCard({
         {Icon && <Icon className="w-3.5 h-3.5 flex-shrink-0" />}
         <p className="text-[10px] font-semibold uppercase tracking-wider truncate">{label}</p>
       </div>
-      <p className={cn('text-lg font-bold mt-1 tabular-nums leading-tight truncate', tone ?? 'text-gray-900')}>{value}</p>
+      {/* ValorAjustavel em vez de `truncate`: sem abreviação os valores ficaram
+          longos, e truncar cortaria o número — some justamente a informação. */}
+      <div className="mt-1">
+        <ValorAjustavel valor={value} className={cn('font-bold', tone ?? 'text-gray-900')} />
+      </div>
       {sub && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{sub}</p>}
     </div>
   );

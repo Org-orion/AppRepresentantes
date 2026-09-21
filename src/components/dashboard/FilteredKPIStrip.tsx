@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { DollarSign, ShoppingCart, TrendingUp, Users } from 'lucide-react';
 import { useAcompanhamento } from '@/hooks/useAcompanhamento';
-import { formatCurrencyK } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import { useDirectorFilters, applyPedidoFilters } from './DirectorFilters';
 import { cn } from '@/utils/cn';
+import ValorAjustavel from '@/components/ui/ValorAjustavel';
 
 function Kpi({ icon: Icon, label, value, tone }: { icon: React.ElementType; label: string; value: string; tone: string }) {
   return (
@@ -12,7 +13,7 @@ function Kpi({ icon: Icon, label, value, tone }: { icon: React.ElementType; labe
         <span className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', tone)}><Icon className="w-4 h-4" /></span>
         <p className="text-[11px] text-gray-400 truncate">{label}</p>
       </div>
-      <p className="text-lg font-bold text-gray-900 tabular-nums mt-1.5 truncate">{value}</p>
+      <div className="mt-1.5"><ValorAjustavel valor={value} className="font-bold text-gray-900" /></div>
     </div>
   );
 }
@@ -38,9 +39,9 @@ export default function FilteredKPIStrip() {
         {active > 0 && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">filtrado · {count} pedido(s)</span>}
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-        <Kpi icon={DollarSign}   label="Valor"         value={isLoading ? '…' : formatCurrencyK(receita)} tone="bg-emerald-50 text-emerald-600" />
+        <Kpi icon={DollarSign}   label="Valor"         value={isLoading ? '…' : formatCurrency(receita)} tone="bg-emerald-50 text-emerald-600" />
         <Kpi icon={ShoppingCart} label="Pedidos"       value={isLoading ? '…' : count.toLocaleString('pt-BR')} tone="bg-amber-50 text-amber-600" />
-        <Kpi icon={TrendingUp}   label="Média de pedido" value={isLoading ? '…' : formatCurrencyK(ticket)} tone="bg-blue-50 text-blue-600" />
+        <Kpi icon={TrendingUp}   label="Média de pedido" value={isLoading ? '…' : formatCurrency(ticket)} tone="bg-blue-50 text-blue-600" />
         <Kpi icon={Users}        label="Clientes"      value={isLoading ? '…' : clientes.toLocaleString('pt-BR')} tone="bg-indigo-50 text-indigo-600" />
       </div>
     </div>
