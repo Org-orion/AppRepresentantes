@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import Select from '@/components/ui/Select';
+import MultiSelect from '@/components/ui/MultiSelect';
 import SearchInput from '@/components/ui/SearchInput';
 import Pagination from '@/components/ui/Pagination';
 import PageContainer from '@/components/ui/PageContainer';
@@ -511,7 +512,7 @@ export default function PedidosPage() {
   const [search, setSearch] = useState(buscaInicial);
   const [cliente, setCliente] = useState('');
   const [ano, setAno] = useState('');
-  const [mes, setMes] = useState('');
+  const [meses, setMeses] = useState<string[]>([]);
   const [representante, setRepresentante] = useState('');
   const [situacao, setSituacao] = useState('');
 
@@ -527,7 +528,7 @@ export default function PedidosPage() {
     cliente: cliente || undefined,
     representante: representante || undefined,
     ano: ano ? Number(ano) : undefined,
-    mes: mes ? Number(mes) : undefined,
+    meses: meses.map(Number),
     situacaoEntrega: situacao || undefined,
   });
   const { data: repsUnicos = [] } = useRepresentantesUnicos();
@@ -562,7 +563,7 @@ export default function PedidosPage() {
 
   const filtrados = useMemo(() => base.filter(matchQuick), [base, matchQuick]);
 
-  useEffect(() => { setPage(1); }, [quick, search, cliente, ano, mes, representante, situacao]);
+  useEffect(() => { setPage(1); }, [quick, search, cliente, ano, meses, representante, situacao]);
 
   // ── KPIs (sobre o conjunto base do servidor) ──
   const kpis = useMemo(() => {
@@ -621,7 +622,7 @@ export default function PedidosPage() {
   const paginados = useMemo(() => filtrados.slice((page - 1) * PAGE, page * PAGE), [filtrados, page]);
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
-  const hasFilters = !!(search || cliente || ano || mes || representante || situacao);
+  const hasFilters = !!(search || cliente || ano || meses.length || representante || situacao);
 
   function applySearch() {
     setSearch(searchInput.trim());
@@ -629,7 +630,7 @@ export default function PedidosPage() {
   }
   function clearFilters() {
     setSearch(''); setSearchInput(''); setCliente(''); setClienteInput('');
-    setAno(''); setMes(''); setRepresentante(''); setSituacao(''); setQuick(new Set());
+    setAno(''); setMeses([]); setRepresentante(''); setSituacao(''); setQuick(new Set());
   }
   function toggleQuick(k: QuickKey) {
     setQuick(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
@@ -873,9 +874,28 @@ export default function PedidosPage() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="text-xs font-semibold text-gray-500 mb-1 block">Ano</label>
-            <Select value={ano} onChange={setAno} placeholder="Todos" options={[{ value: '', label: 'Todos' }, ...ANOS.map(a => ({ value: String(a), label: String(a) }))]} /></div>
-          <div><label className="text-xs font-semibold text-gray-500 mb-1 block">Mês</label>
-            <Select value={mes} onChange={setMes} placeholder="Todos" options={[{ value: '', label: 'Todos' }, ...MESES.map((m, i) => ({ value: String(i + 1), label: m }))]} /></div>
+            <Select
+              value={ano}
+              // Limpar o ano limpa os meses: senão sobra seleção invisível, que
+              // voltaria a valer sozinha ao escolher outro ano.
+              onChange={v => { setAno(v); if (!v) setMeses([]); }}
+              placeholder="Todos"
+              options={[{ value: '', label: 'Todos' }, ...ANOS.map(a => ({ value: String(a), label: String(a) }))]} /></div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Mês</label>
+            <MultiSelect
+              values={meses}
+              onChange={setMeses}
+              disabled={!ano}
+              placeholder="Todos"
+              options={MESES.map((m, i) => ({ value: String(i + 1), label: m }))}
+              resumo={sel => (sel.length <= 3 ? sel.map(o => o.label).join(', ') : `${sel.length} meses`)}
+            />
+            {/* O recorte por mês é montado sobre o ano escolhido; sem ano não há
+                intervalo de datas para montar — antes o campo ficava habilitado
+                e simplesmente não filtrava nada. */}
+            {!ano && <p className="text-[10px] text-gray-400 mt-1">Escolha o ano para filtrar por mês.</p>}
+          </div>
         </div>
         <div><label className="text-xs font-semibold text-gray-500 mb-1 block">Representante</label>
           <Select value={representante} onChange={setRepresentante} placeholder="Todos" options={[{ value: '', label: 'Todos' }, ...repsUnicos.map(r => ({ value: r, label: r }))]} /></div>

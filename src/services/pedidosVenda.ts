@@ -16,6 +16,44 @@ export const CENTRAL_CAP = Math.min(1500, API_MAX_ROWS);
 // Representantes excluídos de todas as consultas (vendas diretas)
 export const REP_EXCLUIDOS = ['40001498 - JANDERSON LEROY MERLIN'];
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * Agrupa meses em blocos contíguos: [1,2,3,5,12] → [[1,3],[5,5],[12,12]].
+ * Serve para o filtro de vários meses virar o MENOR número possível de
+ * intervalos de data — Jan+Fev+Mar viram um intervalo só, não três.
+ */
+export function blocosDeMeses(meses: number[]): [number, number][] {
+  const ordenados = [...new Set(meses.filter(m => Number.isInteger(m) && m >= 1 && m <= 12))]
+    .sort((a, b) => a - b);
+  const blocos: [number, number][] = [];
+  for (const m of ordenados) {
+    const ultimo = blocos[blocos.length - 1];
+    if (ultimo && m === ultimo[1] + 1) ultimo[1] = m;
+    else blocos.push([m, m]);
+  }
+  return blocos;
+}
+
+/**
+ * Filtro `or` do PostgREST cobrindo os meses escolhidos dentro de um ano.
+ * Devolve null quando nenhum mês foi escolhido — aí o chamador usa o ano inteiro.
+ *
+ * O último dia vem de `new Date(ano, mes, 0)`, que já resolve fevereiro
+ * bissexto: para 2024/2, dá 29.
+ */
+export function janelaMeses(ano: number, meses: number[]): string | null {
+  const blocos = blocosDeMeses(meses);
+  if (blocos.length === 0) return null;
+  return blocos
+    .map(([ini, fim]) => {
+      const ultimoDia = new Date(ano, fim, 0).getDate();
+      return `and(data_emissao.gte.${ano}-${pad2(ini)}-01,`
+           + `data_emissao.lte.${ano}-${pad2(fim)}-${pad2(ultimoDia)})`;
+    })
+    .join(',');
+}
+
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -62,7 +100,8 @@ export interface FetchPedidosParams {
   dataInicio?: string;
   dataFim?: string;
   ano?: number;
-  mes?: number;
+  /** Meses (1-12) escolhidos. Vazio = ano inteiro. Só vale junto com `ano`. */
+  meses?: number[];
   situacaoEntrega?: string;
 }
 
@@ -72,7 +111,7 @@ export interface FetchPedidosResult {
 }
 
 export async function fetchPedidosVenda(params: FetchPedidosParams): Promise<FetchPedidosResult> {
-  const { repCodes = [], admin = false, grupos = null, page = 1, search, cliente, representante, dataInicio, dataFim, ano, mes, situacaoEntrega } = params;
+  const { repCodes = [], admin = false, grupos = null, page = 1, search, cliente, representante, dataInicio, dataFim, ano, meses = [], situacaoEntrega } = params;
 
   if (!admin && repCodes.length === 0) return { data: [], total: 0 };
 
@@ -107,12 +146,11 @@ export async function fetchPedidosVenda(params: FetchPedidosParams): Promise<Fet
 
   // Filtro por ano/mês — sobrepõe dataInicio/dataFim se definido
   if (ano) {
-    const mStart = mes ?? 1;
-    const mEnd   = mes ?? 12;
-    const lastDay = new Date(ano, mEnd, 0).getDate();
-    const ini = `${ano}-${String(mStart).padStart(2, '0')}-01`;
-    const fim = `${ano}-${String(mEnd).padStart(2, '0')}-${lastDay}`;
-    query = query.gte('data_emissao', ini).lte('data_emissao', fim);
+    // Vários meses viram um `or` de intervalos — Jan+Mar não é um intervalo
+    // contínuo, então não dá para resolver com um gte/lte só.
+    const janela = janelaMeses(ano, meses);
+    if (janela) query = query.or(janela);
+    else query = query.gte('data_emissao', `${ano}-01-01`).lte('data_emissao', `${ano}-12-31`);
   } else {
     if (dataInicio) query = query.gte('data_emissao', dataInicio);
     if (dataFim)    query = query.lte('data_emissao', dataFim);
@@ -188,7 +226,7 @@ export interface FetchPedidosCompletoResult {
 // Pedidos operar 100% client-side: KPIs, gráficos, quick-filters e as 3 visões
 // (Cards / Tabela / Pipeline) sem refetch a cada interação.
 export async function fetchPedidosCompleto(params: FetchPedidosParams): Promise<FetchPedidosCompletoResult> {
-  const { repCodes = [], admin = false, grupos = null, search, cliente, representante, ano, mes, situacaoEntrega } = params;
+  const { repCodes = [], admin = false, grupos = null, search, cliente, representante, ano, meses = [], situacaoEntrega } = params;
   if (grupos == null && !admin && repCodes.length === 0) return { data: [], total: 0, truncated: false };
 
   let query = supabase
@@ -206,12 +244,9 @@ export async function fetchPedidosCompleto(params: FetchPedidosParams): Promise<
   if (cliente)       query = query.or(`cliente_nome.ilike.%${cliente}%,cliente_fantasia.ilike.%${cliente}%`);
 
   if (ano) {
-    const mStart = mes ?? 1;
-    const mEnd   = mes ?? 12;
-    const lastDay = new Date(ano, mEnd, 0).getDate();
-    query = query
-      .gte('data_emissao', `${ano}-${String(mStart).padStart(2, '0')}-01`)
-      .lte('data_emissao', `${ano}-${String(mEnd).padStart(2, '0')}-${lastDay}`);
+    const janela = janelaMeses(ano, meses);
+    if (janela) query = query.or(janela);
+    else query = query.gte('data_emissao', `${ano}-01-01`).lte('data_emissao', `${ano}-12-31`);
   }
   if (situacaoEntrega) query = query.eq('situacao_entrega', situacaoEntrega);
 

@@ -8,7 +8,7 @@ vi.mock('@/lib/supabase/client', () => ({
 }));
 
 import { supabase } from '@/lib/supabase/client';
-import { fetchRepresentantesUnicos, fetchSituacoesEntrega, REP_EXCLUIDOS } from './pedidosVenda';
+import { fetchRepresentantesUnicos, fetchSituacoesEntrega, REP_EXCLUIDOS, blocosDeMeses, janelaMeses } from './pedidosVenda';
 import { VALID_ID_NOTA_CONF } from '@/constants/orderFilters';
 import { API_MAX_ROWS } from '@/constants/apiLimits';
 
@@ -323,5 +323,67 @@ describe('valoresDistintos — regressão do truncamento (A19)', () => {
     expect(reps).toHaveLength(243);                   // TODOS, não 14
     expect(reps).toContain('REP-000');
     expect(reps).toContain('REP-242');                // o que sumia antes
+  });
+});
+
+
+// ─── Filtro de vários meses ──────────────────────────────────────────────────
+describe('blocosDeMeses', () => {
+  it('agrupa meses contíguos num bloco só', () => {
+    expect(blocosDeMeses([1, 2, 3])).toEqual([[1, 3]]);
+  });
+
+  it('separa blocos quando há buraco', () => {
+    expect(blocosDeMeses([1, 3])).toEqual([[1, 1], [3, 3]]);
+    expect(blocosDeMeses([1, 2, 3, 5, 12])).toEqual([[1, 3], [5, 5], [12, 12]]);
+  });
+
+  it('ordena e remove repetidos — a ordem dos cliques não importa', () => {
+    expect(blocosDeMeses([3, 1, 2, 2])).toEqual([[1, 3]]);
+  });
+
+  it('descarta valor fora de 1-12', () => {
+    expect(blocosDeMeses([0, 5, 13, -1, 7.5])).toEqual([[5, 5]]);
+  });
+
+  it('lista vazia não produz bloco', () => {
+    expect(blocosDeMeses([])).toEqual([]);
+  });
+});
+
+describe('janelaMeses', () => {
+  it('sem mês escolhido devolve null — o chamador usa o ano inteiro', () => {
+    expect(janelaMeses(2026, [])).toBeNull();
+  });
+
+  it('um mês vira um intervalo fechado no último dia', () => {
+    expect(janelaMeses(2026, [1]))
+      .toBe('and(data_emissao.gte.2026-01-01,data_emissao.lte.2026-01-31)');
+  });
+
+  it('meses contíguos viram UM intervalo, não vários', () => {
+    expect(janelaMeses(2026, [1, 2, 3]))
+      .toBe('and(data_emissao.gte.2026-01-01,data_emissao.lte.2026-03-31)');
+  });
+
+  it('meses separados viram um `or` de intervalos', () => {
+    expect(janelaMeses(2026, [1, 3]))
+      .toBe('and(data_emissao.gte.2026-01-01,data_emissao.lte.2026-01-31),'
+          + 'and(data_emissao.gte.2026-03-01,data_emissao.lte.2026-03-31)');
+  });
+
+  it('fevereiro bissexto fecha em 29', () => {
+    expect(janelaMeses(2024, [2]))
+      .toBe('and(data_emissao.gte.2024-02-01,data_emissao.lte.2024-02-29)');
+  });
+
+  it('fevereiro comum fecha em 28', () => {
+    expect(janelaMeses(2026, [2]))
+      .toBe('and(data_emissao.gte.2026-02-01,data_emissao.lte.2026-02-28)');
+  });
+
+  it('dezembro fecha no dia 31 do próprio ano', () => {
+    expect(janelaMeses(2026, [12]))
+      .toBe('and(data_emissao.gte.2026-12-01,data_emissao.lte.2026-12-31)');
   });
 });
