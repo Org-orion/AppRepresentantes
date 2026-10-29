@@ -1,0 +1,65 @@
+-- ============================================================================
+-- Revoga EXECUTE de PUBLIC/anon em app_sync_rep_grafias() (achado do Corvo)
+-- ============================================================================
+-- ACHADO (Red Team / Corvo, durante a revisao de T-004, 29/10/2026):
+-- app_sync_rep_grafias() (criada em 20260910000200_escopo_por_codigo_representante.sql)
+-- so bloqueia usuario AUTENTICADO nao-admin:
+--   if auth.uid() is not null and not public.app_is_admin() then raise exception ...
+-- O comentario original da funcao assumia que uma chamada SEM uid
+-- (auth.uid() is null) so viria de migration, psql ou service_role -- "ja e
+-- confiavel". Mas a migration original NUNCA revogou EXECUTE de PUBLIC: so
+-- concedeu a authenticated (`grant execute ... to authenticated;`), e o
+-- Postgres concede EXECUTE a PUBLIC por padrao em toda funcao nova. Confirmado
+-- em producao:
+--   select has_function_privilege('anon', 'public.app_sync_rep_grafias()', 'EXECUTE');
+--   -- true
+--
+-- IMPACTO: qualquer chamada ANONIMA via PostgREST (sem JWT, role `anon`) pode
+-- executar esta RPC. A funcao faz `select distinct ... from
+-- erp.concrem_pedidos_venda` -- leitura completa da tabela de vendas do ERP,
+-- um banco PRO COMPARTILHADO com outra aplicacao -- seguida de DELETE+INSERT
+-- em concremapprep_rep_grafias. Repetido sem limite por um anonimo, e um vetor
+-- de CUSTO/DoS contra um recurso compartilhado, nao de vazamento de escopo: a
+-- funcao so resincroniza o mapa codigo->grafia, nao devolve dado nenhum ao
+-- chamador e nao amplia o acesso de ninguem.
+--
+-- CORRECAO: so ACL, nenhuma mudanca de logica. Revoga EXECUTE de PUBLIC e de
+-- anon explicitamente -- authenticated continua podendo chamar, e quem tem
+-- sessao e nao e admin continua barrado pelo `raise exception` interno
+-- (inalterado, nao tocado por esta migration).
+--
+-- POR QUE NAO RECRIAR A FUNCAO (create or replace): o achado e so de ACL, nao
+-- de logica. Duplicar o corpo inteiro so para revogar privilegio amplia a
+-- superficie da mudanca sem necessidade -- `revoke` e um comando de ACL
+-- autonomo, nao exige recriar a funcao.
+--
+-- TRADE-OFF CONSIDERADO E DESCARTADO POR AGORA: acrescentar um `if auth.uid()
+-- is null then raise exception` explicito dentro da funcao, como defesa em
+-- profundidade contra um grant futuro que reintroduza o acesso anonimo. NAO
+-- implementado nesta migration porque exigiria `create or replace function`
+-- (corpo completo), contrariando a decisao acima de manter a correcao so em
+-- ACL. Alem disso, o revoke de PUBLIC/anon ja e a defesa primaria correta
+-- aqui: com EXECUTE revogado, a chamada de `anon` e barrada pelo Postgres
+-- ANTES do corpo da funcao rodar -- nao depende da logica interna para
+-- proteger. Fica registrado como melhoria futura, se decidirem reforcar com
+-- defesa em profundidade dentro da propria funcao (ou, mais barato: revisar
+-- `grant`/`revoke` de toda funcao nova nesta mesma checklist, ja que foi
+-- exatamente a ausencia desse revoke que causou o achado).
+--
+-- OBSERVACAO A PARTE (fora do escopo desta migration, NAO corrigida aqui):
+-- app_my_rep_codes(), criada na MESMA migration original, tem o mesmo padrao
+-- de so conceder a authenticated sem revogar de PUBLIC/anon. Nao e o mesmo
+-- risco -- o corpo dela filtra por `ur.usuario_id = auth.uid()`, entao uma
+-- chamada anonima (auth.uid() is null) devolve conjunto VAZIO, sem leitura do
+-- ERP nem escrita -- mas e o mesmo descuido de ACL se repetindo. Registrado
+-- aqui para decisao futura, para nao ampliar o escopo desta migration (T-005).
+--
+-- Nao aplicar em producao sem autorizacao explicita (Kaio, via Maestro).
+--
+-- ROLLBACK
+--   grant execute on function public.app_sync_rep_grafias() to public;
+--   (restaura o estado anterior -- nao recomendado, reintroduz o achado)
+-- ============================================================================
+
+revoke all on function public.app_sync_rep_grafias() from public;
+revoke all on function public.app_sync_rep_grafias() from anon;

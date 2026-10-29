@@ -190,14 +190,18 @@ end;
 $$;
 
 comment on function public.app_escopo_atual() is
-  'Fonte única do escopo do usuário autenticado. Nenhuma RPC deve reimplementar esta lógica. '
-  'Ordem de consumo: tem_escopo=false => vazio; is_global=true => sem filtro; senão filtra por arrays. '
-  'Expande as grafias do ERP por código (20260910000300), espelhando app_my_rep_codes().';
+  'Fonte única do escopo do usuário autenticado. Nenhuma RPC deve reimplementar esta lógica. Ordem de consumo: tem_escopo=false => vazio; is_global=true => sem filtro; senão filtra por arrays. Expande as grafias do ERP por código (20260910000300), espelhando app_my_rep_codes().';
 
 -- Privilegios: `create or replace` PRESERVA os grants existentes, entao o
 -- contrato de ACL de 20260819000300 continua valendo (owner + service_role,
--- sem `authenticated`). Revogamos de PUBLIC de novo por seguranca -- e barato
--- e protege caso a funcao tenha sido recriada a mao em algum momento.
+-- sem `authenticated`). As tres linhas abaixo sao tornadas explicitas por
+-- determinismo -- mesmo padrao do resto do projeto (ex: 20261006000200): o
+-- estado final nao deve depender do que ja estava no banco antes. Nenhuma
+-- mudanca de comportamento -- create or replace ja preservava esse estado.
+-- service_role mantem EXECUTE (contrato correto desta funcao, diferente de
+-- app_dashboard_serie_diaria()) -- por isso nao ha revoke dele aqui.
 revoke all on function public.app_escopo_atual() from public;
+revoke all on function public.app_escopo_atual() from anon;
+revoke all on function public.app_escopo_atual() from authenticated;
 
 commit;
