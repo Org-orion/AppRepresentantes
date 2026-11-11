@@ -25,6 +25,7 @@ export async function baixarOrcamentoPDF(orcamentoId: string, numero: string) {
     URL.revokeObjectURL(url);
   } catch (err) {
     console.error('Erro ao gerar PDF:', err);
+    alert('Não foi possível gerar o PDF do orçamento. Tente novamente ou avise o suporte.');
   }
 }
 
